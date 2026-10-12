@@ -15,6 +15,8 @@ from argos.agent import (
     build_context,
     load_brief,
     plan_targets,
+    process_jobs,
+    resolve_brief,
     run_daemon,
     run_once,
 )
@@ -158,6 +160,115 @@ def test_run_daemon_max_runs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     )
     assert len(runs) == 2
     assert len(calls) == 2
+
+
+def test_run_daemon_re_reads_brief_via_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: list[str] = []
+
+    def fake_once(*args: Any, **kwargs: Any) -> AgentRunResult:
+        seen.append(kwargs["brief"].objective)
+        return AgentRunResult(run_dir=tmp_path, plan=[], plan_source="brief")
+
+    monkeypatch.setattr(agent_mod, "run_once", fake_once)
+    objectives = iter(["primero", "segundo"])
+    run_daemon(
+        ArgosConfig.load(),
+        brief_provider=lambda: Brief(objective=next(objectives)),
+        base_dir=tmp_path / "runs",
+        settings=SETTINGS,
+        interval_hours=1,
+        max_runs=2,
+        sleep_fn=lambda _seconds: None,
+    )
+    assert seen == ["primero", "segundo"]
+
+
+def test_run_daemon_without_brief_does_not_crash(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def provider() -> Brief:
+        raise UsageError("falta el brief")
+
+    calls: list[int] = []
+    monkeypatch.setattr(agent_mod, "run_once", lambda *a, **k: calls.append(1))
+    runs = run_daemon(
+        ArgosConfig.load(),
+        brief_provider=provider,
+        base_dir=tmp_path / "runs",
+        settings=SETTINGS,
+        interval_hours=1,
+        max_runs=1,
+        sleep_fn=lambda _seconds: None,
+    )
+    assert runs == []
+    assert calls == []
+
+
+def test_resolve_brief_volume_file(
+    monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    monkeypatch.delenv("ARGOS_BRIEF_FILE", raising=False)
+    monkeypatch.setenv("ARGOS_BRIEF", "texto de env")
+    (isolated_home / "brief.yaml").write_text(
+        "job: vol\nobjective: desde el volumen\n", encoding="utf-8"
+    )
+    brief = resolve_brief()
+    assert brief.name == "vol"
+    assert brief.objective == "desde el volumen"
+    (isolated_home / "brief.yaml").unlink()
+    assert resolve_brief().objective == "texto de env"
+
+
+def test_process_jobs_runs_and_archives(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "a.yaml").write_text("job: A\nobjective: uno\n", encoding="utf-8")
+    (jobs / "b.yml").write_text("job: B\nobjective: dos\n", encoding="utf-8")
+    names: list[str] = []
+
+    def fake_once(
+        config: Any, *, brief: Any, base_dir: Any, settings: Any, webhook_url: Any = None
+    ) -> AgentRunResult:
+        names.append(brief.name)
+        return AgentRunResult(run_dir=tmp_path, plan=[], plan_source="brief")
+
+    monkeypatch.setattr(agent_mod, "run_once", fake_once)
+    runs = process_jobs(
+        ArgosConfig.load(), base_dir=tmp_path / "runs", settings=SETTINGS, jobs_dir=jobs
+    )
+    assert len(runs) == 2
+    assert names == ["A", "B"]
+    assert not list(jobs.glob("*.yaml")) and not list(jobs.glob("*.yml"))
+    assert sorted(p.name for p in (jobs / "done").iterdir()) == ["a.yaml", "b.yml"]
+
+
+def test_process_jobs_failure_goes_to_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "roto.yaml").write_text("job: R\nobjective: x\n", encoding="utf-8")
+
+    def boom(*args: Any, **kwargs: Any) -> AgentRunResult:
+        raise ArgosError("explota")
+
+    monkeypatch.setattr(agent_mod, "run_once", boom)
+    runs = process_jobs(
+        ArgosConfig.load(), base_dir=tmp_path / "runs", settings=SETTINGS, jobs_dir=jobs
+    )
+    assert runs == []
+    assert (jobs / "failed" / "roto.yaml").exists()
+
+
+def test_jobs_dir_for_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from argos.agent import jobs_dir_for
+
+    monkeypatch.setenv("ARGOS_JOBS_DIR", str(tmp_path / "cola"))
+    assert jobs_dir_for(ArgosConfig.load()) == tmp_path / "cola"
 
 
 def test_apply_env_cookies_from_dir(

@@ -101,19 +101,32 @@ class AgentRunResult:
 # --------------------------------------------------------------------------- #
 
 
-def resolve_brief(brief_path: str | None = None) -> Brief:
-    """Brief desde un archivo explícito, ``ARGOS_BRIEF_FILE`` o ``ARGOS_BRIEF``."""
+def resolve_brief(brief_path: str | None = None, *, home: Path | None = None) -> Brief:
+    """Brief por prioridad:
+
+    1. ``brief_path`` explícito (``--brief``);
+    2. ``ARGOS_BRIEF_FILE``;
+    3. ``<ARGOS_HOME>/brief.yaml`` — el volumen persistente, **editable sin redeploy**;
+    4. ``ARGOS_BRIEF`` (texto del entorno).
+    """
     if brief_path:
         return load_brief(path=Path(brief_path))
     env_file = os.environ.get("ARGOS_BRIEF_FILE")
     if env_file:
         return load_brief(path=Path(env_file))
+    base = Path(home) if home is not None else ArgosConfig.load().home
+    volume_brief = base / "brief.yaml"
+    if volume_brief.is_file():
+        return load_brief(path=volume_brief)
     env_text = os.environ.get("ARGOS_BRIEF")
     if env_text:
         return load_brief(text=env_text)
     raise UsageError(
         "falta el brief",
-        hint="pasá --brief archivo.yaml o definí ARGOS_BRIEF / ARGOS_BRIEF_FILE",
+        hint=(
+            "creá <ARGOS_HOME>/brief.yaml, pasá --brief archivo.yaml "
+            "o definí ARGOS_BRIEF / ARGOS_BRIEF_FILE"
+        ),
     )
 
 
@@ -399,24 +412,42 @@ def run_once(
     return result
 
 
-def run_daemon(
+def jobs_dir_for(config: ArgosConfig) -> Path:
+    """Carpeta de trabajos puntuales: ``ARGOS_JOBS_DIR`` o ``<ARGOS_HOME>/jobs``."""
+    raw = os.environ.get("ARGOS_JOBS_DIR")
+    return Path(raw) if raw else Path(config.home) / "jobs"
+
+
+def _archive_job(job_file: Path, target_dir: Path) -> None:
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        job_file.replace(target_dir / job_file.name)
+    except OSError as exc:
+        _console.print(f"[yellow]no pude archivar {job_file.name}: {exc}[/yellow]")
+
+
+def process_jobs(
     config: ArgosConfig,
     *,
-    brief: Brief,
     base_dir: Path,
     settings: LLMSettings,
-    interval_hours: float,
-    max_runs: int | None = None,
+    jobs_dir: Path | None = None,
     webhook_url: str | None = None,
-    sleep_fn: Callable[[float], None] = time.sleep,
 ) -> list[AgentRunResult]:
-    """Loop de ciclos con cadencia (para el contenedor del VPS)."""
+    """Ejecuta los briefs YAML encolados (una vez cada uno) y los archiva.
+
+    Dejá ``<jobs>/tema.yaml`` y el daemon lo corre en el próximo chequeo;
+    al terminar el archivo pasa a ``<jobs>/done/`` (o ``failed/`` si falló).
+    """
+    directory = Path(jobs_dir) if jobs_dir is not None else jobs_dir_for(config)
+    if not directory.is_dir():
+        return []
     runs: list[AgentRunResult] = []
-    count = 0
-    while max_runs is None or count < max_runs:
-        count += 1
-        _console.print(f"[bold]ciclo {count}[/bold]")
+    pending = sorted(directory.glob("*.yaml")) + sorted(directory.glob("*.yml"))
+    for job_file in pending:
+        _console.print(f"[bold]trabajo puntual:[/bold] {job_file.name}")
         try:
+            brief = load_brief(path=job_file)
             runs.append(
                 run_once(
                     config,
@@ -426,9 +457,83 @@ def run_daemon(
                     webhook_url=webhook_url,
                 )
             )
+            _archive_job(job_file, directory / "done")
         except ArgosError as exc:
-            _console.print(f"[red]ciclo {count} falló:[/red] {exc}")
+            _console.print(f"[red]trabajo {job_file.name} falló:[/red] {exc}")
+            _archive_job(job_file, directory / "failed")
+    return runs
+
+
+def run_daemon(
+    config: ArgosConfig,
+    *,
+    brief: Brief | None = None,
+    brief_provider: Callable[[], Brief] | None = None,
+    base_dir: Path,
+    settings: LLMSettings,
+    interval_hours: float,
+    max_runs: int | None = None,
+    webhook_url: str | None = None,
+    jobs_dir: Path | None = None,
+    poll_seconds: float | None = None,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> list[AgentRunResult]:
+    """Loop del contenedor: atiende la cola de trabajos y corre el brief recurrente.
+
+    - ``interval_hours``: cada cuánto corre el brief recurrente;
+    - ``poll_seconds``: cada cuánto mira la cola (default ``ARGOS_JOBS_POLL_SECONDS``
+      o el propio intervalo);
+    - el brief recurrente se re-resuelve en cada ciclo (editable en el volumen
+      sin redeploy; ``brief_provider`` inyectable para tests).
+    """
+    runs: list[AgentRunResult] = []
+    count = 0
+    cycles = 0
+    interval_seconds = max(60.0, interval_hours * 3600)
+    if poll_seconds is None:
+        raw_poll = os.environ.get("ARGOS_JOBS_POLL_SECONDS")
+        poll_seconds = float(raw_poll) if raw_poll else interval_seconds
+    poll_seconds = max(30.0, min(poll_seconds, interval_seconds))
+    jobs = Path(jobs_dir) if jobs_dir is not None else jobs_dir_for(config)
+
+    elapsed = interval_seconds  # el primer ciclo corre de inmediato
+    next_recurring = 0.0
+    while max_runs is None or count < max_runs:
+        count += 1
+        runs.extend(
+            process_jobs(
+                config,
+                base_dir=base_dir,
+                settings=settings,
+                jobs_dir=jobs,
+                webhook_url=webhook_url,
+            )
+        )
+        if elapsed >= next_recurring:
+            next_recurring = elapsed + interval_seconds
+            cycles += 1
+            try:
+                cycle_brief = brief_provider() if brief_provider else brief
+            except ArgosError as exc:
+                _console.print(f"[yellow]sin brief para este ciclo:[/yellow] {exc}")
+                cycle_brief = None
+            if cycle_brief is not None:
+                _console.print(f"[bold]ciclo {cycles}[/bold] — {cycle_brief.name}")
+                _console.print(f"[dim]objetivo: {cycle_brief.objective[:90]}[/dim]")
+                try:
+                    runs.append(
+                        run_once(
+                            config,
+                            brief=cycle_brief,
+                            base_dir=base_dir,
+                            settings=settings,
+                            webhook_url=webhook_url,
+                        )
+                    )
+                except ArgosError as exc:
+                    _console.print(f"[red]ciclo {cycles} falló:[/red] {exc}")
         if max_runs is not None and count >= max_runs:
             break
-        sleep_fn(max(60.0, interval_hours * 3600))
+        sleep_fn(poll_seconds)
+        elapsed += poll_seconds
     return runs

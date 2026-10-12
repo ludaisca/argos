@@ -558,3 +558,18 @@ def test_agent_requires_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(cli_mod.app, ["agent", "plan"])
     assert result.exit_code == 2
     assert "LLM" in _output(result)
+
+
+def test_agent_daemon_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ARGOS_LLM_API_KEY", "k")
+    calls: list[dict[str, Any]] = []
+
+    def fake_daemon(config: Any, **kwargs: Any) -> list[Any]:
+        calls.append(kwargs)
+        return []
+
+    monkeypatch.setattr("argos.agent.run_daemon", fake_daemon)
+    result = runner.invoke(cli_mod.app, ["agent", "daemon", "--max-runs", "1"])
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    assert "brief_provider" in calls[0]

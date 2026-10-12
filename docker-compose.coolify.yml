@@ -34,6 +34,7 @@ services:
       ARGOS_COOKIES_DIR: ${ARGOS_COOKIES_DIR:-}
       # Cadencia y aviso
       ARGOS_INTERVAL_HOURS: ${ARGOS_INTERVAL_HOURS:-12}
+      ARGOS_JOBS_POLL_SECONDS: ${ARGOS_JOBS_POLL_SECONDS:-300}
       ARGOS_WEBHOOK_URL: ${ARGOS_WEBHOOK_URL:-}
     volumes:
       - argos-data:/data

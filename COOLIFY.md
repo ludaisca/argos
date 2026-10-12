@@ -93,11 +93,42 @@ Logs esperados al arrancar:
 
 ```
 agente en marcha — cada 12.0 h · salidas en /data/runs
+brief recurrente: /data/brief.yaml (o ARGOS_BRIEF) · cola de trabajos: /data/jobs
 ciclo 1
 …
 ```
 
 Resultados: `/data/runs/<job>-<fecha>/` → `analysis.md` + `data/` (crudos, CSV, SQLite).
+
+### 6. Cambiar el objetivo o lanzar varias investigaciones (sin redeploy)
+
+El daemon **re-lee el brief en cada ciclo** desde el volumen. En el **Terminal** del
+recurso en Coolify:
+
+```bash
+# Objetivo recurrente (se usa en cada ciclo):
+cat > /data/brief.yaml <<'EOF'
+job: "Mi investigación"
+objective: >
+  Qué querés averiguar, en tus palabras.
+questions:
+  - Pregunta concreta 1
+targets: []          # vacío = el LLM arma el plan
+max_targets: 5
+EOF
+
+# O una investigación puntual (se corre una vez y se archiva en /data/jobs/done):
+cat > /data/jobs/tema-x.yaml <<'EOF'
+job: "Tema X"
+objective: "Investigar X en IG y FB."
+EOF
+```
+
+- La cola se revisa cada `ARGOS_JOBS_POLL_SECONDS` (300 s por defecto).
+- El brief por env (`ARGOS_BRIEF`) queda como **fallback**: si existe
+  `/data/brief.yaml`, ese manda.
+- Alternativa on-demand: **Scheduled Tasks** de Coolify → comando
+  `argos agent run --brief /data/jobs/tema.yaml` (botón *Execute now* o cron propio).
 
 ## Capacidades del MCP (iguales en ambas instancias)
 

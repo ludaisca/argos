@@ -104,6 +104,48 @@ docker compose cp argos:/data/runs ./runs
 `ARGOS_INTERVAL_HOURS` (default 12) controla cada cuánto corre un ciclo.
 `restart: unless-stopped` hace que el contenedor se recupere solo.
 
+## Varias investigaciones sin redeploy
+
+El agente lee su objetivo del **volumen persistente** y además atiende una **cola de
+trabajos**:
+
+- **Brief recurrente** — `<ARGOS_HOME>/brief.yaml` (en el contenedor:`/data/brief.yaml`).
+  El daemon lo **re-lee en cada ciclo**: editás el archivo y el próximo ciclo usa el nuevo
+  objetivo. Sin rebuild, sin redeploy. Prioridad:
+  `ARGOS_BRIEF_FILE` → `<ARGOS_HOME>/brief.yaml` → `ARGOS_BRIEF` (texto del entorno).
+- **Trabajos puntuales** — dejá un YAML en `<ARGOS_HOME>/jobs/` (`/data/jobs/`) y el daemon
+  lo corre **una vez**; al terminar se archiva en `jobs/done/` (o `jobs/failed/`). Podés
+  encolar varias investigaciones distintas a la vez. Se revisa cada
+  `ARGOS_JOBS_POLL_SECONDS` (default 300 s).
+- **On-demand** — dentro del contenedor: `argos agent run --brief /data/jobs/tema.yaml`.
+
+Ejemplo (terminal del contenedor — en Coolify, botón *Terminal*):
+
+```bash
+cat > /data/brief.yaml <<'EOF'
+job: "DeepSeek en redes"
+objective: >
+  Investigar cómo se habla de DeepSeek en Instagram y Facebook.
+questions:
+  - ¿Qué cuentas/páginas son más relevantes?
+targets: []
+max_targets: 5
+EOF
+```
+
+Y un trabajo puntual para otra investigación:
+
+```bash
+cat > /data/jobs/nasa.yaml <<'EOF'
+job: "NASA"
+objective: "Relevar las cuentas de NASA en Instagram y Facebook y sus temas."
+targets:
+  - type: ig_profile
+    value: nasa
+    limit: 6
+EOF
+```
+
 ## Límites y seguridad
 
 - Argos aplica los mismos límites que el CLI (12/min y 400/día por red, pausas de

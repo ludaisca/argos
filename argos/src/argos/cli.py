@@ -553,21 +553,30 @@ def agent_daemon(
     webhook: str = typer.Option(None, "--webhook", help="URL para avisar en cada corrida."),
 ) -> None:
     """Loop de ciclos con cadencia (es lo que corre el contenedor Docker)."""
-    from argos.agent import resolve_brief, run_daemon
+    from argos.agent import Brief, jobs_dir_for, resolve_brief, run_daemon
 
     config, settings = _agent_setup()
-    brief_obj = resolve_brief(brief)
     interval = interval_hours or float(os.environ.get("ARGOS_INTERVAL_HOURS") or 12)
     base_dir = _agent_out(out, config)
+    jobs = jobs_dir_for(config)
     console.print(f"[bold]agente en marcha[/bold] — cada {interval} h · salidas en {base_dir}")
+    console.print(
+        f"[dim]brief recurrente: {config.home / 'brief.yaml'} (o ARGOS_BRIEF) "
+        f"· cola de trabajos: {jobs}[/dim]"
+    )
+
+    def _brief_provider() -> Brief:
+        return resolve_brief(brief, home=config.home)
+
     runs = run_daemon(
         config,
-        brief=brief_obj,
+        brief_provider=_brief_provider,
         base_dir=base_dir,
         settings=settings,
         interval_hours=interval,
         max_runs=max_runs,
         webhook_url=webhook or os.environ.get("ARGOS_WEBHOOK_URL"),
+        jobs_dir=jobs,
     )
     console.print(f"[green]ok[/green] {len(runs)} ciclos completados")
 

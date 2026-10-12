@@ -77,6 +77,13 @@ configura por entorno: `ARGOS_LLM_API_KEY` / `ARGOS_LLM_BASE_URL` / `ARGOS_LLM_M
 Las cookies se pueden dar por `ARGOS_COOKIES_DIR` (carpeta con `*-cookies.json`) o
 `ARGOS_COOKIES_IG` / `ARGOS_COOKIES_FB`.
 
+En modo daemon (contenedor) el brief recurrente se re-lee en cada ciclo desde
+`<ARGOS_HOME>/brief.yaml` (editable sin redeploy; prioridad: `ARGOS_BRIEF_FILE` →
+`<ARGOS_HOME>/brief.yaml` → `ARGOS_BRIEF`). Además, cada `<ARGOS_HOME>/jobs/*.yaml`
+se ejecuta **una vez** y se archiva en `jobs/done` (o `jobs/failed`), lo que permite
+encolar varias investigaciones distintas. La cola se revisa cada
+`ARGOS_JOBS_POLL_SECONDS` (default 300 s).
+
 ## Contrato de salida
 
 - **stdout** = solo el JSON cuando usás `--json` (parseá stdout).
