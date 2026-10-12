@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "argos"
+dynamic = ["version"]
+description = "Investigación de Facebook e Instagram con Playwright, para humanos y agentes."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "TD" }]
+dependencies = [
+    "playwright>=1.45",
+    "pydantic>=2.7",
+    "requests>=2.31",
+    "typer>=0.12",
+    "rich>=13.7",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "types-PyYAML>=6.0",
+    "types-requests>=2.32",
+]
+mcp = ["mcp>=2"]
+
+[project.scripts]
+argos = "argos.cli:main"
+
+[tool.hatch.version]
+path = "src/argos/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/argos"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/argos/cli.py" = ["B008"]  # typer exige las llamadas a Option() en los defaults
+"tests/*" = ["SIM117"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src"]
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["mcp", "mcp.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["e2e: usa un navegador real de Playwright"]
+addopts = "-ra"

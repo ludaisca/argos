@@ -1,0 +1,55 @@
+"""Instagram: probe de sesión, extracción (DOM) y flujos de lectura."""
+
+from argos.platforms.instagram.extract import (
+    parse_comments,
+    parse_count,
+    parse_grid,
+    parse_post_page,
+    parse_profile,
+    parse_search_panel,
+)
+from argos.platforms.instagram.flows import (
+    MAX_COMMENTS_LIMIT,
+    MAX_POSTS_LIMIT,
+    CommentsResult,
+    PostsResult,
+    ProfileResult,
+    SearchResult,
+    fetch_comments,
+    fetch_hashtag,
+    fetch_posts,
+    fetch_profile,
+    fetch_reels,
+    normalize_hashtag,
+    normalize_post_url,
+    normalize_username,
+    parse_since,
+    search,
+)
+from argos.platforms.instagram.platform import InstagramPlatform
+
+__all__ = [
+    "MAX_COMMENTS_LIMIT",
+    "MAX_POSTS_LIMIT",
+    "CommentsResult",
+    "InstagramPlatform",
+    "PostsResult",
+    "ProfileResult",
+    "SearchResult",
+    "fetch_comments",
+    "fetch_hashtag",
+    "fetch_posts",
+    "fetch_profile",
+    "fetch_reels",
+    "normalize_hashtag",
+    "normalize_post_url",
+    "normalize_username",
+    "parse_comments",
+    "parse_count",
+    "parse_grid",
+    "parse_post_page",
+    "parse_profile",
+    "parse_search_panel",
+    "parse_since",
+    "search",
+]

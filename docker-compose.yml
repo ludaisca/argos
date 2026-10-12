@@ -1,0 +1,26 @@
+# Argos — agente autónomo de investigación (FB/IG) para un VPS con Docker.
+#
+#   1) cp .env.example .env        (y completá la API del LLM)
+#   2) cp brief.example.yaml brief.yaml   (y escribí tu objetivo)
+#   3) docker compose up -d --build
+#   4) docker compose logs -f      (mirá los ciclos)
+#   5) informes en ./data/runs/    (o dentro del volumen)
+#
+services:
+  argos:
+    build: .
+    image: argos-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ARGOS_HOME: /data
+      # Cookies del zip (si existen) para no pegar JSON en el .env:
+      ARGOS_COOKIES_DIR: /cookies
+    volumes:
+      - argos-data:/data                     # estado persistente (sesiones, corridas, informes)
+      - ./brief.yaml:/app/brief.yaml:ro      # tu objetivo de investigación
+      - ./cookies:/cookies:ro                # cookies exportadas (ig/fb) — opcional
+
+volumes:
+  argos-data:

@@ -1,0 +1,27 @@
+# Brief de investigación — esto es lo que le decís al agente.
+# Copialo a `brief.yaml` y editá el objetivo.
+#
+# Dejá `targets: []` para que el LLM proponga el plan (recomendado la primera vez),
+# o llenalo a mano para control total:
+#   - type: ig_profile | ig_posts | ig_hashtag | ig_reels | ig_search | ig_comments
+#           | fb_page | fb_search | fb_groups_feed
+#     value: usuario / etiqueta / término (URL de post solo para ig_comments)
+#     limit: 12           (máximo 20)
+#     kind: pages|groups|people  (fm)  |  posts|users (ig_search)
+#     details: true       (traer métricas/fecha por post — más acciones)
+
+job: "DeepSeek en redes"
+
+objective: >
+  Investigar cómo se está hablando de DeepSeek en Instagram y Facebook:
+  qué cuentas y páginas son relevantes, qué temas dominan y qué se dice
+  en los comentarios. Quiero un panorama, no un dump de datos.
+
+questions:
+  - ¿Qué cuentas/páginas publican sobre DeepSeek y cuáles tienen más alcance?
+  - ¿Qué temas, opiniones y controversias aparecen?
+  - ¿Hay señales de uso profesional o de negocio (no solo noticias)?
+
+targets: []      # vacío = el LLM arma el plan
+
+max_targets: 5   # tope de objetivos por corrida

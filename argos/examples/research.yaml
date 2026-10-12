@@ -1,0 +1,12 @@
+# Plan de investigación de ejemplo para `argos research`.
+# Corré:  argos research examples/research.yaml --out ./research
+job: "Ejemplo de investigación"
+headless: true
+targets:
+  - type: ig_profile
+    value: nasa
+    limit: 3
+  - type: fb_search
+    value: nasa
+    kind: pages
+    limit: 3

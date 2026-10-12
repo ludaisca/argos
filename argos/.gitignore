@@ -1,0 +1,22 @@
+# Entorno
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Herramientas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datos locales de Argos (nunca commitear sesiones/cookies)
+argos-data/
+profiles/
+research/
+runs/
+*.har

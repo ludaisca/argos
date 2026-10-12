@@ -1,0 +1,42 @@
+# Argos para Coolify — variante del compose pensada para un VPS gestionado.
+#
+# Diferencia con docker-compose.yml: no usa archivos locales (./brief.yaml,
+# ./cookies, .env). Todo entra por variables de entorno de Coolify y el estado
+# vive en un volumen nombrado.
+#
+# En Coolify (New Resource → Docker Compose):
+#   Docker Compose Location:  /docker-compose.coolify.yml
+#   Environment:              ARGOS_LLM_API_KEY, ARGOS_LLM_BASE_URL, ARGOS_LLM_MODEL,
+#                             ARGOS_BRIEF (una línea) o ARGOS_BRIEF_FILE,
+#                             ARGOS_COOKIES_IG / ARGOS_COOKIES_FB (JSON en una línea),
+#                             ARGOS_INTERVAL_HOURS, ARGOS_WEBHOOK_URL
+#   Persistent Storage:       (el volumen argos-data ya queda definido acá)
+#   FQDN / Ports:             dejar vacío — es un worker, no publica puertos.
+
+services:
+  argos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ARGOS_HOME: /data
+      # LLM
+      ARGOS_LLM_API_KEY: ${ARGOS_LLM_API_KEY:-}
+      ARGOS_LLM_BASE_URL: ${ARGOS_LLM_BASE_URL:-https://api.openai.com/v1}
+      ARGOS_LLM_MODEL: ${ARGOS_LLM_MODEL:-gpt-4o-mini}
+      # Objetivo (texto en una línea; o ruta a un archivo montado como file storage)
+      ARGOS_BRIEF: ${ARGOS_BRIEF:-}
+      ARGOS_BRIEF_FILE: ${ARGOS_BRIEF_FILE:-}
+      # Credenciales (JSON en una línea; o carpeta con *-cookies.json)
+      ARGOS_COOKIES_IG: ${ARGOS_COOKIES_IG:-}
+      ARGOS_COOKIES_FB: ${ARGOS_COOKIES_FB:-}
+      ARGOS_COOKIES_DIR: ${ARGOS_COOKIES_DIR:-}
+      # Cadencia y aviso
+      ARGOS_INTERVAL_HOURS: ${ARGOS_INTERVAL_HOURS:-12}
+      ARGOS_WEBHOOK_URL: ${ARGOS_WEBHOOK_URL:-}
+    volumes:
+      - argos-data:/data
+
+volumes:
+  argos-data:

@@ -1,0 +1,12 @@
+# Nada de secretos en el repo
+.env
+cookies/
+data/
+brief.yaml
+
+# Salidas y estado local
+runs/
+research/
+profiles/
+argos-data/
+*.har
