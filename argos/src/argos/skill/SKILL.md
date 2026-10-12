@@ -75,7 +75,7 @@ argos leads enrich leads.csv --sector medico --out ./leads-out [--limit N] [--no
 
 Entra una lista del CRM (Nombre, Correo, Teléfono, Empresa) y sale `leads.csv` con las
 columnas del CRM + validación de ramo médico (SearxNG propio + Google Maps + Nominatim).
-En la UI: Investigación → pestaña **Personalizada**. Salida incremental (leads.json,
+En la UI: menú **Investigación → Personalizada**. Salida incremental (leads.json,
 leads.csv, report.md).
 
 ## Plataformas nuevas y fetch genérico

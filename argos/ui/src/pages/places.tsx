@@ -7,6 +7,7 @@ import {
   MapPinIcon,
   SaveIcon,
   SearchIcon,
+  StarIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -350,7 +351,8 @@ export function PlacesPage() {
                       <TableCell>
                         {place.rating ? (
                           <Badge variant="warning">
-                            ★ {place.rating}
+                            <StarIcon className="size-3 fill-current" />
+                            {place.rating}
                             {place.reviews ? ` (${place.reviews})` : ""}
                           </Badge>
                         ) : (

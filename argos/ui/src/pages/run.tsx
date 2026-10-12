@@ -236,7 +236,7 @@ export function RunPage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{job.job ?? job.file}</div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {job.error ? `⚠ ${job.error}` : (job.objective ?? "").slice(0, 120)}
+                      {job.error ? `Error: ${job.error}` : (job.objective ?? "").slice(0, 120)}
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1">

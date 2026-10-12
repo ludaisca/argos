@@ -7,6 +7,7 @@ import {
   PlayIcon,
   SettingsIcon,
   SquareIcon,
+  StethoscopeIcon,
   TelescopeIcon,
   WrenchIcon,
   ZapIcon,
@@ -57,6 +58,7 @@ export function CommandMenu({ open, onOpenChange }: { open: boolean; onOpenChang
     return [
       nav("dashboard", "Estado", GaugeIcon),
       nav("brief", "Investigación", BookOpenIcon),
+      nav("personalizada", "Personalizada (leads)", StethoscopeIcon),
       nav("places", "Lugares", MapPinIcon),
       nav("run", "Ejecutar", PlayIcon),
       nav("results", "Resultados", TelescopeIcon),

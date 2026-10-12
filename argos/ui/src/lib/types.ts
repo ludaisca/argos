@@ -168,4 +168,11 @@ export interface DoctorResult {
   platforms: Record<string, { name?: string; status?: string; detail?: string; hint?: string | null }>;
 }
 
-export type Section = "dashboard" | "brief" | "places" | "run" | "results" | "settings";
+export type Section =
+  | "dashboard"
+  | "brief"
+  | "personalizada"
+  | "places"
+  | "run"
+  | "results"
+  | "settings";

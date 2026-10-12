@@ -146,7 +146,7 @@ export function LeadsTab() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="font-semibold text-2xl tracking-tight">Personalizada · leads</h1>
+        <h1 className="font-semibold text-2xl tracking-tight">Personalizada</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Pegá los leads de tu CRM (Nombre, Correo, Teléfono, Empresa) y Argos los enriquece:
           valida el <b>ramo médico</b>, busca Google Maps, Facebook, teléfono, entidad/ciudad,

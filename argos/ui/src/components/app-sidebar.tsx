@@ -19,18 +19,38 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { useArgos } from "@/lib/store";
 import type { Section } from "@/lib/types";
 
-const NAV: { group: string; items: { id: Section; label: string; icon: typeof GaugeIcon }[] }[] = [
+interface NavChild {
+  id: Section;
+  label: string;
+}
+
+interface NavItem {
+  id: Section;
+  label: string;
+  icon: typeof GaugeIcon;
+  children?: NavChild[];
+}
+
+const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: "General",
     items: [
       { id: "dashboard", label: "Estado", icon: GaugeIcon },
-      { id: "brief", label: "Investigación", icon: BookOpenIcon },
+      {
+        id: "brief",
+        label: "Investigación",
+        icon: BookOpenIcon,
+        children: [{ id: "personalizada", label: "Personalizada" }],
+      },
       { id: "places", label: "Lugares", icon: MapPinIcon },
     ],
   },
@@ -60,7 +80,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" onClick={() => setSection("dashboard")}>
               <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <span className="text-base">🔭</span>
+                <TelescopeIcon className="size-4" />
               </div>
               <div className="grid flex-1 text-left leading-tight">
                 <span className="truncate font-semibold">Argos</span>
@@ -91,6 +111,21 @@ export function AppSidebar() {
                     {item.id === "run" && pendingJobs > 0 ? (
                       <SidebarMenuBadge>{pendingJobs}</SidebarMenuBadge>
                     ) : null}
+                    {item.children ? (
+                      <SidebarMenuSub>
+                        {item.children.map((child) => (
+                          <SidebarMenuSubItem key={child.id}>
+                            <SidebarMenuSubButton
+                              isActive={section === child.id}
+                              render={<button type="button" />}
+                              onClick={() => setSection(child.id)}
+                            >
+                              <span>{child.label}</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    ) : null}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -116,7 +151,12 @@ export function AppSidebar() {
                 key={platform}
                 variant={info.cookies > 0 || info.profile ? "success" : "warning"}
               >
-                {platform} · {info.cookies > 0 ? `${info.cookies}🍪` : info.profile ? "perfil" : "sin sesión"}
+                {platform} ·{" "}
+                {info.cookies > 0
+                  ? `${info.cookies} cookies`
+                  : info.profile
+                    ? "perfil"
+                    : "sin sesión"}
               </Badge>
             ))}
           </div>

@@ -65,12 +65,12 @@ export function SettingsPage({
       setTestOk(result.ok);
       setTestResult(
         result.ok
-          ? `✅ ${result.model} respondió: ${result.reply}`
-          : `❌ ${result.model}: ${result.error}`,
+          ? `El modelo ${result.model} respondió: ${result.reply}`
+          : `Error (${result.model}): ${result.error}`,
       );
     } catch (error) {
       setTestOk(false);
-      setTestResult(`❌ ${error instanceof Error ? error.message : String(error)}`);
+      setTestResult(`Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setTesting(false);
     }

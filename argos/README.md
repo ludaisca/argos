@@ -38,7 +38,7 @@ argos mcp                # servidor MCP (stdio) con las lecturas como tools tipa
 
 ## Personalizada: enriquecimiento de leads (sector médico)
 
-En la UI (**Investigación → Personalizada**) o por CLI:
+En la UI (menú **Investigación → Personalizada**) o por CLI:
 
 ```bash
 argos leads template --out leads.csv
