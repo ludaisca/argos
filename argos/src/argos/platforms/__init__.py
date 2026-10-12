@@ -6,10 +6,16 @@ from argos.errors import UsageError
 from argos.platforms.base import Platform
 from argos.platforms.facebook import FacebookPlatform
 from argos.platforms.instagram import InstagramPlatform
+from argos.platforms.linkedin import LinkedInPlatform
+from argos.platforms.x import XPlatform
+from argos.platforms.youtube import YouTubePlatform
 
 _PLATFORMS: dict[str, Platform] = {
     InstagramPlatform.name: InstagramPlatform(),
     FacebookPlatform.name: FacebookPlatform(),
+    YouTubePlatform.name: YouTubePlatform(),
+    LinkedInPlatform.name: LinkedInPlatform(),
+    XPlatform.name: XPlatform(),
 }
 
 

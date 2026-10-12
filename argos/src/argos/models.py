@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Platform = Literal["instagram", "facebook"]
+Platform = Literal["instagram", "facebook", "youtube", "linkedin", "x"]
 MediaType = Literal["photo", "video", "carousel", "unknown"]
 
 

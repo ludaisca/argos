@@ -7,7 +7,7 @@ from typing import Any
 from argos.browser.limiter import DailyQuota
 from argos.config import ArgosConfig
 
-_PLATFORMS = ("instagram", "facebook")
+_PLATFORMS = ("instagram", "facebook", "youtube", "linkedin", "x")
 
 
 def quota_report(config: ArgosConfig | None = None, platform: str | None = None) -> dict[str, Any]:

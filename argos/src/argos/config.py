@@ -44,6 +44,9 @@ class PlatformLimits:
 DEFAULT_LIMITS: Mapping[str, PlatformLimits] = {
     "instagram": PlatformLimits(per_minute=12, daily_actions=400),
     "facebook": PlatformLimits(per_minute=8, daily_actions=400),
+    "youtube": PlatformLimits(per_minute=10, daily_actions=300),
+    "linkedin": PlatformLimits(per_minute=6, daily_actions=120),
+    "x": PlatformLimits(per_minute=8, daily_actions=200),
 }
 
 

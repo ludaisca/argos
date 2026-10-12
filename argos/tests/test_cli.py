@@ -414,7 +414,7 @@ def test_quota_json() -> None:
     result = runner.invoke(cli_mod.app, ["quota", "--json"])
     assert result.exit_code == 0
     payload = json.loads(_stdout(result))
-    assert set(payload) == {"instagram", "facebook"}
+    assert set(payload) == {"instagram", "facebook", "youtube", "linkedin", "x"}
     assert payload["instagram"]["daily_limit"] == 400
     assert payload["instagram"]["remaining"] == 400  # estado fresco en tests
 

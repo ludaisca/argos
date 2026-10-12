@@ -61,8 +61,22 @@ argos report <dir> [--json]                       # (re)genera report.md / CSV /
 ```
 
 El plan lista objetivos (`ig_profile`, `ig_posts`, `ig_hashtag`, `ig_reels`, `ig_search`,
-`ig_comments`, `fb_page`, `fb_search`, `fb_groups_feed`, `places_search`). La corrida
-genera `report.md`, CSVs, `argos.db` (SQLite consultable) y `run.json` en la carpeta del job.
+`ig_comments`, `fb_page`, `fb_search`, `fb_groups_feed`, `yt_search`, `yt_channel`,
+`yt_video`, `li_profile`, `li_search`, `x_profile`, `x_search`, `places_search`). La
+corrida genera `report.md`, CSVs, `argos.db` (SQLite consultable) y `run.json` en la
+carpeta del job.
+
+## Plataformas nuevas y fetch genérico
+
+```bash
+argos fetch yt_search "inteligencia artificial" --limit 10 --json
+argos fetch yt_channel "@nasa" --out ./yt          # perfil + videos
+argos fetch li_profile "slug-o-url" --out ./li     # requiere `argos login linkedin`
+argos fetch x_search "deepseek" --kind latest      # requiere `argos login x`
+```
+
+YouTube es público (sin login; parsea `ytInitialData`). LinkedIn y X usan la sesión del
+humano (`argos login linkedin` / `argos login x`) o cookies (`argos cookies linkedin|x`).
 
 ## Lugares (sin costo)
 

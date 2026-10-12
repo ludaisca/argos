@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "argos"
 dynamic = ["version"]
-description = "Investigación de Facebook e Instagram con Playwright, para humanos y agentes."
+description = "Investigación de redes (FB, IG, YouTube, LinkedIn, X) y lugares, para humanos y agentes."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

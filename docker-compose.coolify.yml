@@ -31,6 +31,8 @@ services:
       # Credenciales (JSON en una línea; o carpeta con *-cookies.json)
       ARGOS_COOKIES_IG: ${ARGOS_COOKIES_IG:-}
       ARGOS_COOKIES_FB: ${ARGOS_COOKIES_FB:-}
+      ARGOS_COOKIES_LI: ${ARGOS_COOKIES_LI:-}
+      ARGOS_COOKIES_X: ${ARGOS_COOKIES_X:-}
       ARGOS_COOKIES_DIR: ${ARGOS_COOKIES_DIR:-}
       # Cadencia y aviso
       ARGOS_INTERVAL_HOURS: ${ARGOS_INTERVAL_HOURS:-12}

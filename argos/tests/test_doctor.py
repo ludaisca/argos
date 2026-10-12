@@ -19,7 +19,7 @@ def test_collect_off_when_browser_missing(monkeypatch: pytest.MonkeyPatch) -> No
     )
     data = collect(ArgosConfig.load())
     assert data["browser"]["ready"] is False
-    assert set(data["platforms"]) == {"instagram", "facebook"}
+    assert set(data["platforms"]) == {"instagram", "facebook", "youtube", "linkedin", "x"}
     for entry in data["platforms"].values():
         assert entry["status"] == "off"
         assert "playwright install chromium" in str(entry["hint"])

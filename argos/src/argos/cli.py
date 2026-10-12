@@ -684,6 +684,75 @@ def places_search(
 app.add_typer(places_app, name="places")
 
 
+# ── Fetch genérico (cualquier plataforma) ───────────────────────────
+
+
+@app.command("fetch")
+@_guard
+def fetch(
+    target_type: str = typer.Argument(
+        ...,
+        help=(
+            "yt_search · yt_channel · yt_video · li_profile · li_search · "
+            "x_profile · x_search · ig_profile · fb_page…"
+        ),
+    ),
+    value: str = typer.Argument(
+        ..., help="Consulta, @handle, URL o slug según el tipo de objetivo."
+    ),
+    limit: int = typer.Option(12, "--limit", "--limite", help="Cuántos elementos."),
+    kind: str = typer.Option(
+        None, "--kind", help="Subtipo: videos/channels · people/companies/posts · top/latest."
+    ),
+    out: str = typer.Option(None, "--out", help="Carpeta donde guardar (JSONL + reporte)."),
+    json_output: bool = typer.Option(False, "--json", help="Salida JSON."),
+) -> None:
+    """Ejecuta un objetivo suelto en cualquier plataforma (YouTube, LinkedIn, X, IG, FB)."""
+    from argos.report import DATASETS, build_report
+    from argos.research import _execute, parse_targets
+
+    config = ArgosConfig.load()
+    targets = parse_targets(
+        [{"type": target_type, "value": value, "limit": limit, "kind": kind}]
+    )
+    target = targets[0]
+    limiter = RateLimiter(config, target.platform)
+    pacer = Pacer()
+    with BrowserSession(target.platform, config, headless=True) as session:
+        records, actions, remaining = _execute(
+            session, target, limiter=limiter, pacer=pacer
+        )
+
+    if out:
+        out_dir = Path(out)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for name, models in records.items():
+            if not models:
+                continue
+            filename, keys = DATASETS[name]
+            append_unique_jsonl(out_dir / filename, models, keys)
+        report = build_report(out_dir, title=f"{target_type}: {value}")
+        console.print(
+            f"[green]guardado[/green] en {out_dir} · reporte: {report['markdown']}"
+        )
+
+    if json_output:
+        payload = {
+            name: [model.model_dump(mode="json") for model in models]
+            for name, models in records.items()
+            if models
+        }
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    console.print(
+        f"[bold]{target.label()}[/bold] · {actions} acciones · quedan {remaining} hoy"
+    )
+    for name, models in records.items():
+        if models:
+            console.print(f"  {name}: {len(models)}")
+
+
 # ── Instagram (lectura, DOM-first, con límites) ─────────────────────
 
 ig_app = typer.Typer(

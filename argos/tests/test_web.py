@@ -30,7 +30,7 @@ def test_status_empty_home(client: TestClient, isolated_home: Path) -> None:
     assert data["llm"]["llm_configured"] is False
     assert data["home"] == str(isolated_home)
     assert data["brief"]["source"] == "none"
-    assert set(data["sessions"]) == {"instagram", "facebook"}
+    assert set(data["sessions"]) == {"instagram", "facebook", "linkedin", "x"}
     assert data["busy"] is False
 
 
@@ -40,12 +40,21 @@ def test_index_and_meta(client: TestClient) -> None:
     assert "Argos" in home.text
 
     data = client.get("/api/meta").json()
-    assert data["platforms"] == ["facebook", "instagram", "places"]
+    assert data["platforms"] == [
+        "facebook",
+        "instagram",
+        "linkedin",
+        "places",
+        "x",
+        "youtube",
+    ]
     assert data["platform_labels"]["places"] == "Lugares (OSM/Google)"
     assert "ig_profile" in data["target_types"]["instagram"]
     assert "fb_page" in data["target_types"]["facebook"]
     assert data["target_types"]["places"] == ["places_search"]
+    assert data["target_types"]["youtube"] == ["yt_channel", "yt_search", "yt_video"]
     assert data["kinds"]["ig_search"] == ["posts", "users"]
+    assert data["kinds"]["x_search"] == ["top", "latest"]
 
 
 def test_brief_roundtrip(client: TestClient, isolated_home: Path) -> None:
@@ -74,7 +83,14 @@ def test_brief_invalid_platform_falls_back_to_all(client: TestClient) -> None:
         json={"job": "x", "objective": "x", "platforms": ["tiktok"]},
     )
     assert r.status_code == 200
-    assert r.json()["platforms"] == ["facebook", "instagram", "places"]
+    assert r.json()["platforms"] == [
+        "facebook",
+        "instagram",
+        "linkedin",
+        "places",
+        "x",
+        "youtube",
+    ]
 
 
 def test_brief_requires_objective(client: TestClient) -> None:

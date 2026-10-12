@@ -40,7 +40,7 @@ def test_quota_tool_returns_report(isolated_home) -> None:
     from argos.mcp_server import quota_tool
 
     report = quota_tool()
-    assert set(report) == {"instagram", "facebook"}
+    assert set(report) == {"instagram", "facebook", "youtube", "linkedin", "x"}
     assert report["instagram"]["daily_limit"] == 400
 
 

@@ -192,13 +192,15 @@ def apply_env_cookies(config: ArgosConfig) -> list[str]:
     sources: list[tuple[str, str, str]] = []  # (etiqueta, raw, plataforma)
     cookie_dir = os.environ.get("ARGOS_COOKIES_DIR")
     if cookie_dir and Path(cookie_dir).is_dir():
-        for platform in ("instagram", "facebook"):
+        for platform in ("instagram", "facebook", "linkedin", "x"):
             candidate = Path(cookie_dir) / f"{platform}-cookies.json"
             if candidate.is_file():
                 sources.append((str(candidate), candidate.read_text(encoding="utf-8"), platform))
     for env_name, platform in (
         ("ARGOS_COOKIES_IG", "instagram"),
         ("ARGOS_COOKIES_FB", "facebook"),
+        ("ARGOS_COOKIES_LI", "linkedin"),
+        ("ARGOS_COOKIES_X", "x"),
     ):
         raw = os.environ.get(env_name)
         if raw:

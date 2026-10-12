@@ -9,7 +9,7 @@ from argos.quota import quota_report
 
 def test_quota_report_defaults(isolated_home: Path) -> None:
     report = quota_report()
-    assert set(report) == {"instagram", "facebook"}
+    assert set(report) == {"instagram", "facebook", "youtube", "linkedin", "x"}
     assert report["instagram"]["used"] == 0
     assert report["instagram"]["daily_limit"] == 400
     assert report["instagram"]["remaining"] == 400

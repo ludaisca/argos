@@ -527,6 +527,9 @@ def _meta_payload(service: UIService) -> dict[str, Any]:
         "platform_labels": {
             "instagram": "Instagram",
             "facebook": "Facebook",
+            "youtube": "YouTube",
+            "linkedin": "LinkedIn",
+            "x": "X (Twitter)",
             "places": "Lugares (OSM/Google)",
         },
         "target_types": {
@@ -538,6 +541,9 @@ def _meta_payload(service: UIService) -> dict[str, Any]:
         "kinds": {
             "ig_search": ["posts", "users"],
             "fb_search": ["pages", "groups", "people"],
+            "yt_search": ["videos", "channels"],
+            "li_search": ["people", "companies", "posts"],
+            "x_search": ["top", "latest"],
         },
         "max_targets_cap": 12,
         "target_limit_cap": _TARGET_LIMIT_CAP,

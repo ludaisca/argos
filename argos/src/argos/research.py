@@ -38,6 +38,13 @@ TARGET_PLATFORM: dict[str, str] = {
     "fb_page": "facebook",
     "fb_search": "facebook",
     "fb_groups_feed": "facebook",
+    "yt_search": "youtube",
+    "yt_channel": "youtube",
+    "yt_video": "youtube",
+    "li_profile": "linkedin",
+    "li_search": "linkedin",
+    "x_profile": "x",
+    "x_search": "x",
     "places_search": "places",
 }
 
@@ -140,6 +147,9 @@ def _execute(
     """Corre un target y devuelve ``(registros por dataset, acciones, cuota restante)``."""
     from argos.platforms import facebook as fb
     from argos.platforms import instagram as ig
+    from argos.platforms import linkedin as li
+    from argos.platforms import x as xp
+    from argos.platforms import youtube as yt
 
     value = target.value or ""
     since = ig.parse_since(target.since) if target.since else None
@@ -220,6 +230,69 @@ def _execute(
             {"search": list(fb_search_result.hits)},
             fb_search_result.actions,
             fb_search_result.daily_remaining,
+        )
+
+    if target.type == "yt_search":
+        yt_search_result = yt.search(
+            session, value, limiter=limiter, pacer=pacer,
+            kind=target.kind or "videos", limit=target.limit,
+        )
+        return (
+            {"posts": list(yt_search_result.posts), "search": list(yt_search_result.hits)},
+            yt_search_result.actions,
+            yt_search_result.daily_remaining,
+        )
+    if target.type == "yt_channel":
+        channel_result = yt.fetch_channel(
+            session, value, limiter=limiter, pacer=pacer, limit=target.limit
+        )
+        channel_records: dict[str, list[Any]] = {"posts": list(channel_result.recent_posts)}
+        if channel_result.profile is not None:
+            channel_records["profiles"] = [channel_result.profile]
+        return channel_records, channel_result.actions, channel_result.daily_remaining
+    if target.type == "yt_video":
+        video_result = yt.fetch_video(
+            session, value, limiter=limiter, pacer=pacer, limit=target.limit
+        )
+        video_records: dict[str, list[Any]] = {"comments": list(video_result.comments)}
+        if video_result.post is not None:
+            video_records["posts"] = [video_result.post]
+        return video_records, video_result.actions, video_result.daily_remaining
+    if target.type == "li_profile":
+        li_profile_result = li.fetch_profile(
+            session, value, limiter=limiter, pacer=pacer, limit=target.limit
+        )
+        li_records: dict[str, list[Any]] = {"posts": list(li_profile_result.recent_posts)}
+        if li_profile_result.profile is not None:
+            li_records["profiles"] = [li_profile_result.profile]
+        return li_records, li_profile_result.actions, li_profile_result.daily_remaining
+    if target.type == "li_search":
+        li_search_result = li.search(
+            session, value, limiter=limiter, pacer=pacer,
+            kind=target.kind or "people", limit=target.limit,
+        )
+        return (
+            {"search": list(li_search_result.hits), "posts": list(li_search_result.posts)},
+            li_search_result.actions,
+            li_search_result.daily_remaining,
+        )
+    if target.type == "x_profile":
+        x_profile_result = xp.fetch_profile(
+            session, value, limiter=limiter, pacer=pacer, limit=target.limit
+        )
+        x_records: dict[str, list[Any]] = {"posts": list(x_profile_result.recent_posts)}
+        if x_profile_result.profile is not None:
+            x_records["profiles"] = [x_profile_result.profile]
+        return x_records, x_profile_result.actions, x_profile_result.daily_remaining
+    if target.type == "x_search":
+        x_search_result = xp.search(
+            session, value, limiter=limiter, pacer=pacer,
+            kind=target.kind or "top", limit=target.limit,
+        )
+        return (
+            {"posts": list(x_search_result.posts)},
+            x_search_result.actions,
+            x_search_result.daily_remaining,
         )
 
     # fb_groups_feed

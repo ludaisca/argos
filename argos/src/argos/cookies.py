@@ -18,21 +18,41 @@ from typing import Any
 COOKIE_DOMAINS = {
     "instagram": ("instagram.com",),
     "facebook": ("facebook.com",),
+    "youtube": ("youtube.com", "google.com"),
+    "linkedin": ("linkedin.com",),
+    "x": ("x.com", "twitter.com"),
 }
 REQUIRED_COOKIES = {
     "instagram": ("sessionid", "ds_user_id"),
     "facebook": ("c_user", "xs"),
+    "linkedin": ("li_at",),
+    "x": ("auth_token",),
 }
-CONFIG_KEYS = {"instagram": "ig_cookies", "facebook": "fb_cookies"}
-PLATFORM_BY_KEY = {"ig-cookies": "instagram", "fb-cookies": "facebook"}
-PLATFORM_KEYS = {"instagram": "ig-cookies", "facebook": "fb-cookies"}
+CONFIG_KEYS = {
+    "instagram": "ig_cookies",
+    "facebook": "fb_cookies",
+    "linkedin": "li_cookies",
+    "x": "x_cookies",
+}
+PLATFORM_BY_KEY = {
+    "ig-cookies": "instagram",
+    "fb-cookies": "facebook",
+    "li-cookies": "linkedin",
+    "x-cookies": "x",
+}
+PLATFORM_KEYS = {
+    "instagram": "ig-cookies",
+    "facebook": "fb-cookies",
+    "linkedin": "li-cookies",
+    "x": "x-cookies",
+}
 
 
 def _domain_matches(domain: str, platform: str) -> bool:
     host = (domain or "").lower().lstrip(".").rstrip(".")
     if not host:
         return False
-    for allowed in COOKIE_DOMAINS[platform]:
+    for allowed in COOKIE_DOMAINS.get(platform, ()):
         if host == allowed or host.endswith("." + allowed):
             return True
     return False
@@ -111,10 +131,13 @@ def export_cookies(context: Any, platform: str) -> list[dict[str, Any]]:
 
 def inject_if_needed(context: Any, platform: str, config: Any) -> bool:
     """Inyecta cookies importadas solo si el perfil no tiene sesión válida."""
-    imported = config.get(CONFIG_KEYS[platform])
+    config_key = CONFIG_KEYS.get(platform)
+    if config_key is None:
+        return False
+    imported = config.get(config_key)
     if not isinstance(imported, list) or not imported:
         return False
-    required = REQUIRED_COOKIES[platform]
+    required = REQUIRED_COOKIES.get(platform, ())
     existing = {str(cookie.get("name")) for cookie in context.cookies()}
     if any(name in existing for name in required):
         return False

@@ -36,6 +36,28 @@ argos mcp                # servidor MCP (stdio) con las lecturas como tools tipa
   llamás `fb_search`, `ig_profile`, `doctor`, `quota`, etc. como herramientas tipadas.
 - Contrato estable: `--json` va a stdout, el progreso a stderr, exit codes 0–5.
 
+## Más plataformas: YouTube, LinkedIn y X
+
+```bash
+argos fetch yt_search "inteligencia artificial" --limit 10 --json
+argos fetch yt_channel "@nasa" --limit 12 --out ./yt
+argos fetch yt_video "https://youtu.be/VIDEOID" --limit 20    # video + comentarios
+argos fetch li_profile "ana-lopez-123" --out ./li             # requiere sesión
+argos fetch li_search "marketing" --kind people
+argos fetch x_profile "@nasa" --limit 20                      # requiere sesión
+argos fetch x_search "deepseek" --kind latest
+```
+
+- **YouTube**: público, sin login. Búsqueda (videos/canales), canal (perfil + videos) y
+  video + comentarios. Parsea `ytInitialData` (el JSON embebido de la página), por lo
+  que aguanta cambios de layout mejor que selectores CSS.
+- **LinkedIn** y **X**: requieren tu sesión — `argos login linkedin` / `argos login x`
+  (login humano en la ventana), o importar cookies (`argos cookies linkedin --out li.json`).
+  Perfil/empresa + publicaciones, y búsquedas (personas/empresas/contenido en LinkedIn;
+  destacados/recientes en X).
+- Todo entra al mismo pipeline: objetivos en planes (`yt_search`, `li_profile`, `x_search`…),
+  planner del LLM, cola de trabajos, informes con CSV/SQLite y la UI.
+
 ## Lugares sin costo (OpenStreetMap / Google Maps)
 
 ```bash
