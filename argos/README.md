@@ -36,6 +36,29 @@ argos mcp                # servidor MCP (stdio) con las lecturas como tools tipa
   llamás `fb_search`, `ig_profile`, `doctor`, `quota`, etc. como herramientas tipadas.
 - Contrato estable: `--json` va a stdout, el progreso a stderr, exit codes 0–5.
 
+## Personalizada: enriquecimiento de leads (sector médico)
+
+En la UI (**Investigación → Personalizada**) o por CLI:
+
+```bash
+argos leads template --out leads.csv
+argos leads enrich leads.csv --sector medico --out ./leads-out
+```
+
+Entra tu lista del CRM (**Nombre, Correo, Teléfono, Empresa/clínica/hospital** — cualquiera
+de los cuatro, en CSV/TSV o pegado) y sale una fila por lead con las columnas del CRM y la
+validación de **ramo médico**:
+
+- **Fuentes sin login**: SearxNG propio (web, teléfonos, Facebook), Google Maps (ficha,
+  categoría, dirección, teléfono) y Nominatim reverse (Entidad/Ciudad). LinkedIn, después.
+- **Validación de sector** con señales (categorías médicas, "Dr./Dra.", especialidades,
+  IMSS/ISSSTE, dominios…) y **confianza + evidencia** por dato. Lo dudoso **no se auto-llena**.
+- **Tipo de cliente** se mapea al enum del CRM (incluye `No es del ramo`).
+- **Salida**: `leads.csv` (Nombre, Apellido, Correo, Teléfono, Entidad, Ciudad, Tipo de
+  cliente, Especialidad, Categoría, Facebook, Google Maps, Observaciones, Ramo médico,
+  Confianza, Evidencias) + `leads.json` + `report.md`. Escritura **incremental**: un lote
+  largo se puede cortar sin perder lo hecho.
+
 ## Más plataformas: YouTube, LinkedIn y X
 
 ```bash

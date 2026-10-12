@@ -6,8 +6,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { ToastProvider } from "@/components/ui/toast";
 import { ArgosProvider, useArgos } from "@/lib/store";
 import type { Section } from "@/lib/types";
-import { BriefPage } from "@/pages/brief";
 import { DashboardPage } from "@/pages/dashboard";
+import { InvestigacionPage } from "@/pages/investigacion";
 import { PlacesPage } from "@/pages/places";
 import { ResultsPage } from "@/pages/results";
 import { RunPage } from "@/pages/run";
@@ -47,7 +47,7 @@ function Shell({
         </header>
         <main className="flex-1 p-4 lg:p-6">
           {section === "dashboard" ? <DashboardPage /> : null}
-          {section === "brief" ? <BriefPage /> : null}
+          {section === "brief" ? <InvestigacionPage /> : null}
           {section === "places" ? <PlacesPage /> : null}
           {section === "run" ? <RunPage /> : null}
           {section === "results" ? <ResultsPage /> : null}

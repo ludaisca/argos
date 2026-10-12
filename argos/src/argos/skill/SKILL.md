@@ -66,6 +66,18 @@ El plan lista objetivos (`ig_profile`, `ig_posts`, `ig_hashtag`, `ig_reels`, `ig
 corrida genera `report.md`, CSVs, `argos.db` (SQLite consultable) y `run.json` en la
 carpeta del job.
 
+## Personalizada (leads)
+
+```bash
+argos leads template --out leads.csv
+argos leads enrich leads.csv --sector medico --out ./leads-out [--limit N] [--no-gmaps] [--json]
+```
+
+Entra una lista del CRM (Nombre, Correo, Teléfono, Empresa) y sale `leads.csv` con las
+columnas del CRM + validación de ramo médico (SearxNG propio + Google Maps + Nominatim).
+En la UI: Investigación → pestaña **Personalizada**. Salida incremental (leads.json,
+leads.csv, report.md).
+
 ## Plataformas nuevas y fetch genérico
 
 ```bash

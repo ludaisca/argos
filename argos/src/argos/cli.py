@@ -753,6 +753,79 @@ def fetch(
             console.print(f"  {name}: {len(models)}")
 
 
+# ── Leads (Personalizada) ───────────────────────────────────────────
+
+leads_app = typer.Typer(
+    help="Enriquecimiento de leads: completa el CRM y valida el sector (médico)."
+)
+
+
+@leads_app.command("template")
+@_guard
+def leads_template(
+    out: str = typer.Option("leads.csv", "--out", help="Archivo CSV de plantilla a escribir."),
+) -> None:
+    """Escribe una plantilla CSV de entrada (Nombre, Correo, Teléfono, Empresa)."""
+    from argos.leads import template_csv
+
+    path = Path(out)
+    path.write_text(template_csv(), encoding="utf-8-sig")
+    console.print(f"[green]plantilla[/green] en {path}")
+
+
+@leads_app.command("enrich")
+@_guard
+def leads_enrich(
+    source: Path = typer.Argument(
+        ..., exists=True, dir_okay=False, help="CSV/TSV de leads."
+    ),
+    sector: str = typer.Option("medico", "--sector", help="Sector a validar (medico)."),
+    out: str = typer.Option(None, "--out", help="Carpeta de salida (default ./leads-out/<fecha>)."),
+    limit: int = typer.Option(None, "--limit", help="Procesar solo los primeros N leads."),
+    no_gmaps: bool = typer.Option(False, "--no-gmaps", help="Sin Google Maps (más rápido)."),
+    json_output: bool = typer.Option(False, "--json", help="Resumen final en JSON."),
+) -> None:
+    """Enriquece leads: rellena campos del CRM y valida el ramo médico."""
+    import datetime as dt
+
+    from argos.leads import enrich_batch, parse_leads
+
+    config = ArgosConfig.load()
+    try:
+        text = source.read_text(encoding="utf-8-sig")
+    except OSError as exc:
+        raise UsageError(f"no pude leer {source}: {exc}") from exc
+    leads = parse_leads(text)
+    if not leads:
+        raise UsageError(
+            "no encontré leads en el archivo",
+            hint="columnas: Nombre, Correo, Teléfono, Empresa (o líneas sueltas)",
+        )
+    out_dir = (
+        Path(out) if out else Path("leads-out") / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    )
+    console.print(f"[bold]{len(leads)} leads[/bold] · sector {sector} · salida en {out_dir}")
+    summary = enrich_batch(
+        leads,
+        out_dir=out_dir,
+        config=config,
+        sector=sector,
+        use_gmaps=not no_gmaps,
+        limit=limit,
+    )
+    if json_output:
+        typer.echo(json.dumps(summary, ensure_ascii=False, indent=2))
+        return
+    console.print(
+        f"[green]ok[/green] {summary['rows']} leads · médico {summary['counts']['medico']} · "
+        f"dudosos {summary['counts']['dudoso']} · no del ramo {summary['counts']['no']}"
+    )
+    console.print(f"  CSV: {summary['csv']}")
+
+
+app.add_typer(leads_app, name="leads")
+
+
 # ── Instagram (lectura, DOM-first, con límites) ─────────────────────
 
 ig_app = typer.Typer(

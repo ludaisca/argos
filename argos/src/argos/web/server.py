@@ -110,6 +110,13 @@ class PlacesSavePayload(PlacesSearchPayload):
     center: dict[str, Any] | None = None
 
 
+class LeadsEnrichPayload(BaseModel):
+    text: str = ""
+    sector: Literal["medico"] = "medico"
+    use_gmaps: bool = True
+    limit: int | None = None
+
+
 # --------------------------------------------------------------------------- #
 # Registro de procesos
 # --------------------------------------------------------------------------- #
@@ -858,6 +865,108 @@ def create_app(home: Path | None = None) -> FastAPI:
         with contextlib.suppress(ArgosError):
             build_report(run_dir, title=objective)
         return {"run_name": run_dir.name, "run_dir": str(run_dir), "count": len(records)}
+
+    # ----- leads (Personalizada) ----- #
+
+    @app.post("/api/leads/enrich")
+    def leads_enrich(payload: LeadsEnrichPayload) -> dict[str, Any]:
+        from argos.leads import parse_leads
+
+        leads = parse_leads(payload.text)
+        if not leads:
+            raise HTTPException(
+                422, "no encontré leads (columnas: Nombre, Correo, Teléfono, Empresa)"
+            )
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        inbox = service.home / "leads" / "inbox"
+        inbox.mkdir(parents=True, exist_ok=True)
+        input_path = inbox / f"leads-{stamp}.csv"
+        atomic_write_private_text(input_path, payload.text)
+        out_dir = service.home / "leads" / "runs" / f"lote-{stamp}"
+        args = [
+            "leads",
+            "enrich",
+            str(input_path),
+            "--sector",
+            payload.sector,
+            "--out",
+            str(out_dir),
+        ]
+        if not payload.use_gmaps:
+            args.append("--no-gmaps")
+        if payload.limit:
+            args.extend(["--limit", str(payload.limit)])
+        record = service.launch(
+            args, kind="leads", label=f"leads ({len(leads)}) · {stamp}"
+        )
+        data = record.as_dict()
+        data["count"] = len(leads)
+        return data
+
+    @app.get("/api/leads/runs")
+    def leads_runs() -> dict[str, Any]:
+        base = service.home / "leads" / "runs"
+        items: list[dict[str, Any]] = []
+        if base.is_dir():
+            for entry in sorted(base.iterdir(), reverse=True):
+                if not entry.is_dir():
+                    continue
+                rows = 0
+                json_path = entry / "leads.json"
+                if json_path.is_file():
+                    try:
+                        data = json.loads(json_path.read_text(encoding="utf-8"))
+                        rows = len(data) if isinstance(data, list) else 0
+                    except (OSError, ValueError):
+                        rows = 0
+                items.append(
+                    {
+                        "name": entry.name,
+                        "rows": rows,
+                        "csv": (entry / "leads.csv").is_file(),
+                    }
+                )
+        return {"runs": items}
+
+    def _leads_run_dir(name: str) -> Path:
+        if not re.fullmatch(r"[\w.\-]+", name):
+            raise HTTPException(400, "nombre inválido")
+        base = (service.home / "leads" / "runs").resolve()
+        path = (base / name).resolve()
+        if path.parent != base or not path.is_dir():
+            raise HTTPException(404, "lote no encontrado")
+        return path
+
+    @app.get("/api/leads/runs/{name}")
+    def leads_run_detail(name: str) -> dict[str, Any]:
+        path = _leads_run_dir(name)
+        rows: list[dict[str, Any]] = []
+        json_path = path / "leads.json"
+        if json_path.is_file():
+            try:
+                loaded = json.loads(json_path.read_text(encoding="utf-8"))
+                rows = loaded if isinstance(loaded, list) else []
+            except (OSError, ValueError):
+                rows = []
+        return {"name": name, "rows": rows, "csv": (path / "leads.csv").is_file()}
+
+    @app.get("/api/leads/runs/{name}/csv")
+    def leads_run_csv(name: str) -> FileResponse:
+        path = _leads_run_dir(name)
+        csv_path = path / "leads.csv"
+        if not csv_path.is_file():
+            raise HTTPException(404, "el lote aún no tiene CSV")
+        return FileResponse(csv_path, filename=f"{name}.csv", media_type="text/csv")
+
+    @app.get("/api/leads/template")
+    def leads_template() -> Response:
+        from argos.leads import template_csv
+
+        return Response(
+            content=template_csv(),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="leads-template.csv"'},
+        )
 
     # ----- doctor ----- #
 

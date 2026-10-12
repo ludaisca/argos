@@ -32,6 +32,7 @@ from argos.errors import ArgosError, UsageError
 from argos.models import Place
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 OVERPASS_ENDPOINTS = (
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -264,6 +265,38 @@ def geocode(query: str, *, timeout: int = 30) -> GeoPoint | None:
         )
     except (KeyError, TypeError, ValueError):
         return None
+
+
+def reverse_geocode(lat: float, lon: float, *, timeout: int = 30) -> dict[str, str] | None:
+    """Dirección administrativa de un punto: ``{state, city, display}`` (para Entidad/Ciudad)."""
+    data = _get_json(
+        NOMINATIM_REVERSE_URL,
+        {
+            "lat": f"{lat:.6f}",
+            "lon": f"{lon:.6f}",
+            "format": "jsonv2",
+            "addressdetails": 1,
+            "accept-language": "es",
+        },
+        timeout=timeout,
+    )
+    if not isinstance(data, dict):
+        return None
+    address = data.get("address") or {}
+    state = address.get("state") or address.get("region") or ""
+    city = (
+        address.get("city")
+        or address.get("town")
+        or address.get("village")
+        or address.get("municipality")
+        or address.get("county")
+        or ""
+    )
+    return {
+        "state": str(state),
+        "city": str(city),
+        "display": str(data.get("display_name") or ""),
+    }
 
 
 def _nominatim_places(query: str, *, limit: int, timeout: int) -> list[Place]:
@@ -687,6 +720,14 @@ def _gmaps_rows_to_places(
             hours = hours_match.group(1).strip()[:120]
 
         digest = hashlib.sha1(f"{name}|{address or ''}".encode()).hexdigest()[:16]
+        lat = lon = None
+        if url:
+            coords = re.search(r"!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)", url)
+            if coords:
+                try:
+                    lat, lon = float(coords.group(1)), float(coords.group(2))
+                except ValueError:
+                    lat = lon = None
         places.append(
             Place(
                 source="gmaps",
@@ -696,6 +737,8 @@ def _gmaps_rows_to_places(
                 address=address,
                 phone=phone,
                 opening_hours=hours,
+                lat=lat,
+                lon=lon,
                 rating=rating,
                 reviews=reviews,
                 url=url,

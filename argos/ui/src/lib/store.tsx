@@ -83,6 +83,7 @@ interface ArgosContextValue {
   runDoctor: () => Promise<DoctorResult>;
   selectRun: (name: string) => Promise<void>;
   refreshRuns: () => Promise<void>;
+  track: (record: ProcRecord) => void;
 }
 
 const ArgosContext = createContext<ArgosContextValue | null>(null);
@@ -392,6 +393,10 @@ export function ArgosProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const track = useCallback((record: ProcRecord) => {
+    setRun(record);
+  }, []);
+
   const value = useMemo<ArgosContextValue>(
     () => ({
       meta,
@@ -422,6 +427,7 @@ export function ArgosProvider({ children }: { children: ReactNode }) {
       runDoctor,
       selectRun,
       refreshRuns,
+      track,
     }),
     [
       meta,
@@ -451,6 +457,7 @@ export function ArgosProvider({ children }: { children: ReactNode }) {
       runDoctor,
       selectRun,
       refreshRuns,
+      track,
     ],
   );
 
