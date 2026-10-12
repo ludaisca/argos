@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import {
   DownloadIcon,
+  ExternalLinkIcon,
   FileSpreadsheetIcon,
   Loader2Icon,
   PlayIcon,
+  RadarIcon,
   RefreshCwIcon,
   StethoscopeIcon,
+  TriangleAlertIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,13 +43,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { LogConsole } from "@/components/log-console";
 import { api } from "@/lib/api";
 import { notify, useArgos } from "@/lib/store";
-import type { ProcRecord } from "@/lib/types";
+import type { LeadSource, ProcRecord } from "@/lib/types";
 
 interface LeadsRunInfo {
   name: string;
   rows: number;
   csv: boolean;
 }
+
+const SOURCE_VARIANT: Record<string, "success" | "warning" | "error" | "info"> = {
+  ok: "success",
+  degradado: "warning",
+  error: "error",
+  "on-demand": "info",
+};
 
 const SAMPLE_TEXT = [
   "Nombre,Correo,Teléfono,Empresa",
@@ -64,12 +74,16 @@ export function LeadsTab() {
   const { run, track } = useArgos();
   const [text, setText] = useState(SAMPLE_TEXT);
   const [useGmaps, setUseGmaps] = useState(true);
+  const [batchMode, setBatchMode] = useState(true);
+  const [batchSize, setBatchSize] = useState("20");
   const [limit, setLimit] = useState("");
   const [launching, setLaunching] = useState(false);
   const [lotes, setLotes] = useState<LeadsRunInfo[]>([]);
   const [selected, setSelected] = useState("");
   const [rows, setRows] = useState<Array<Record<string, string>>>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [sources, setSources] = useState<LeadSource[]>([]);
+  const [checkingSources, setCheckingSources] = useState(false);
   const leadsRun: ProcRecord | null = run && run.kind === "leads" ? run : null;
   const active = leadsRun?.status === "running";
 
@@ -107,6 +121,23 @@ export function LeadsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const refreshSources = async () => {
+    setCheckingSources(true);
+    try {
+      const data = await api<{ sources: LeadSource[] }>("/api/leads/sources");
+      setSources(data.sources);
+    } catch {
+      /* silencioso */
+    } finally {
+      setCheckingSources(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshSources();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (leadsRun && leadsRun.status !== "running") {
       void refreshLotes(true);
@@ -128,6 +159,8 @@ export function LeadsTab() {
           sector: "medico",
           use_gmaps: useGmaps,
           limit: limit ? Number(limit) : null,
+          batch_size: batchMode ? Number(batchSize) || 20 : null,
+          pause_seconds: batchMode ? 180 : null,
         },
       });
       track(record);
@@ -154,6 +187,64 @@ export function LeadsTab() {
           (SearxNG propio + Maps).
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Fuentes de búsqueda</CardTitle>
+          <CardDescription>
+            Esto consulta el enriquecimiento por lead. El log de cada lote muestra cuántos
+            resultados devolvió cada búsqueda, y la columna Evidencias guarda los links
+            encontrados.
+          </CardDescription>
+          <CardAction>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void refreshSources()}
+              disabled={checkingSources}
+            >
+              <RefreshCwIcon className={checkingSources ? "animate-spin" : ""} /> Probar fuentes
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardPanel className="grid gap-2 lg:grid-cols-2">
+          {sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {checkingSources ? "Chequeando fuentes…" : "Sin datos de fuentes todavía."}
+            </p>
+          ) : (
+            sources.map((source) => (
+              <div
+                key={source.id}
+                className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <RadarIcon className="size-3.5 shrink-0" />
+                    {source.name}
+                  </div>
+                  <p className="truncate text-xs text-muted-foreground" title={source.detail}>
+                    {source.detail}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge variant={SOURCE_VARIANT[source.status] ?? "outline"}>
+                    {source.status}
+                  </Badge>
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener"
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    <ExternalLinkIcon className="size-3.5" />
+                  </a>
+                </div>
+              </div>
+            ))
+          )}
+        </CardPanel>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
@@ -193,6 +284,30 @@ export function LeadsTab() {
                 </span>
                 <Switch checked={useGmaps} onCheckedChange={(checked) => setUseGmaps(checked)} />
               </label>
+              <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+                <span className="flex items-center gap-2">
+                  <RefreshCwIcon className="size-4" /> Procesar en tandas
+                </span>
+                <Switch checked={batchMode} onCheckedChange={(checked) => setBatchMode(checked)} />
+              </label>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field>
+                <FieldLabel>Leads por tanda</FieldLabel>
+                <FieldItem>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={batchSize}
+                    disabled={!batchMode}
+                    onChange={(event) => setBatchSize(event.target.value)}
+                  />
+                </FieldItem>
+                <FieldDescription>
+                  Pausa de 3 minutos entre tandas (SearxNG se satura con ráfagas).
+                </FieldDescription>
+              </Field>
               <Field>
                 <FieldLabel>Límite (opcional)</FieldLabel>
                 <FieldItem>
@@ -204,9 +319,10 @@ export function LeadsTab() {
                     onChange={(event) => setLimit(event.target.value)}
                   />
                 </FieldItem>
+                <FieldDescription>Procesar solo los primeros N del pegado.</FieldDescription>
               </Field>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-start gap-3">
               <Button onClick={() => void start()} disabled={launching || active}>
                 {launching || active ? (
                   <Loader2Icon className="animate-spin" />
@@ -215,11 +331,14 @@ export function LeadsTab() {
                 )}
                 {active ? "Procesando…" : "Procesar lote"}
               </Button>
-              {useGmaps ? (
-                <span className="text-xs text-muted-foreground">
-                  Maps agrega ficha/categoría/dirección (más lento); sin él, ~4 búsquedas web por lead.
+              <p className="flex max-w-md items-start gap-1.5 text-xs text-muted-foreground">
+                <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  Para 100+ leads usá las tandas: la fuente se satura si consultás muy
+                  rápido. Los leads sin resultados quedan marcados como “Dudoso · sin
+                  resultados” para reintentar después.
                 </span>
-              ) : null}
+              </p>
             </div>
           </CardPanel>
         </Card>

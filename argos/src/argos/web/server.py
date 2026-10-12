@@ -115,6 +115,8 @@ class LeadsEnrichPayload(BaseModel):
     sector: Literal["medico"] = "medico"
     use_gmaps: bool = True
     limit: int | None = None
+    batch_size: int | None = None
+    pause_seconds: float | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -896,6 +898,9 @@ def create_app(home: Path | None = None) -> FastAPI:
             args.append("--no-gmaps")
         if payload.limit:
             args.extend(["--limit", str(payload.limit)])
+        if payload.batch_size:
+            args.extend(["--batch-size", str(payload.batch_size)])
+            args.extend(["--pause-seconds", str(payload.pause_seconds or 180)])
         record = service.launch(
             args, kind="leads", label=f"leads ({len(leads)}) · {stamp}"
         )
@@ -967,6 +972,87 @@ def create_app(home: Path | None = None) -> FastAPI:
             media_type="text/csv",
             headers={"Content-Disposition": 'attachment; filename="leads-template.csv"'},
         )
+
+    @app.get("/api/leads/sources")
+    def leads_sources() -> dict[str, Any]:
+        from argos import places as places_mod
+        from argos import searxng
+
+        base = searxng.resolve_base(service.config)
+        sources: list[dict[str, Any]] = []
+
+        started = time.monotonic()
+        searx_ok = False
+        try:
+            found = searxng.search("test", base=base, limit=1, timeout=15)
+            elapsed = time.monotonic() - started
+            searx_ok = bool(found)
+            searx_status = "ok" if found else "degradado"
+            searx_detail = (
+                f"{len(found)} resultado(s) en {elapsed:.1f}s"
+                if found
+                else "respondió pero sin resultados (motores saturados; reintentá en unos minutos)"
+            )
+        except ArgosError as exc:
+            searx_status = "error"
+            searx_detail = str(exc)[:140]
+        sources.append(
+            {
+                "id": "searxng",
+                "name": "SearxNG — web general",
+                "status": searx_status,
+                "detail": searx_detail,
+                "url": base,
+            }
+        )
+        sources.append(
+            {
+                "id": "facebook",
+                "name": "Facebook — vía SearxNG (site:facebook.com)",
+                "status": "ok" if searx_ok else "degradado",
+                "detail": "busca la página del negocio sin usar tu sesión de Facebook",
+                "url": "https://www.facebook.com",
+            }
+        )
+
+        started = time.monotonic()
+        try:
+            reverse = places_mod.reverse_geocode(19.043, -98.198, timeout=15)
+            elapsed = time.monotonic() - started
+            geo_status = "ok" if reverse else "degradado"
+            geo_detail = (
+                f"{reverse.get('city') or '—'}, {reverse.get('state') or '—'} en {elapsed:.1f}s"
+                if reverse
+                else "respondió sin dirección"
+            )
+        except ArgosError as exc:
+            geo_status = "error"
+            geo_detail = str(exc)[:140]
+        sources.append(
+            {
+                "id": "nominatim",
+                "name": "Nominatim — Entidad y Ciudad",
+                "status": geo_status,
+                "detail": geo_detail,
+                "url": "https://nominatim.openstreetmap.org",
+            }
+        )
+        sources.append(
+            {
+                "id": "gmaps",
+                "name": "Google Maps — ficha del lugar",
+                "status": "on-demand",
+                "detail": (
+                    "scraper local (Playwright, sin login): se usa cuando el lead trae "
+                    "empresa/clínica o el nombre parece institución"
+                ),
+                "url": "https://www.google.com/maps",
+            }
+        )
+        return {
+            "sources": sources,
+            "checked_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+        }
 
     # ----- doctor ----- #
 

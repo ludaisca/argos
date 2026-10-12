@@ -783,6 +783,12 @@ def leads_enrich(
     out: str = typer.Option(None, "--out", help="Carpeta de salida (default ./leads-out/<fecha>)."),
     limit: int = typer.Option(None, "--limit", help="Procesar solo los primeros N leads."),
     no_gmaps: bool = typer.Option(False, "--no-gmaps", help="Sin Google Maps (más rápido)."),
+    batch_size: int = typer.Option(
+        None, "--batch-size", help="Procesar en tandas de N leads con pausas (ej: 20)."
+    ),
+    pause_seconds: float = typer.Option(
+        180.0, "--pause-seconds", help="Segundos de pausa entre tandas (default 180)."
+    ),
     json_output: bool = typer.Option(False, "--json", help="Resumen final en JSON."),
 ) -> None:
     """Enriquece leads: rellena campos del CRM y valida el ramo médico."""
@@ -812,6 +818,8 @@ def leads_enrich(
         sector=sector,
         use_gmaps=not no_gmaps,
         limit=limit,
+        batch_size=batch_size,
+        pause_seconds=pause_seconds,
     )
     if json_output:
         typer.echo(json.dumps(summary, ensure_ascii=False, indent=2))

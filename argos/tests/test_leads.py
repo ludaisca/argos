@@ -299,8 +299,28 @@ def test_related_texts_enable_type_and_specialty() -> None:
     assert "Odontología" in verdict.especialidades
 
 
+def test_enrich_batch_pauses_between_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(leads_mod.searxng, "search", lambda *a, **k: list(SEARX_HITS))
+    monkeypatch.setattr(leads_mod.places_mod, "search", _fake_places)
+    monkeypatch.setattr(leads_mod.places_mod, "reverse_geocode", _fake_reverse)
+    pauses: list[float] = []
+    leads = [Lead(nombre=f"Persona {index}") for index in range(3)]
+    summary = enrich_batch(
+        leads,
+        out_dir=tmp_path / "tandas",
+        config=ArgosConfig.load(),
+        use_gmaps=False,
+        batch_size=2,
+        pause_seconds=120.0,
+        sleep_fn=pauses.append,
+    )
+    assert summary["rows"] == 3
+    assert pauses == [120.0]
+
+
 def test_empty_sources_mark_dudoso_not_no(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Sin resultados de búsqueda no se afirma "no es del ramo": queda dudoso."""
     monkeypatch.setattr(leads_mod.time, "sleep", lambda _s: None)
     sources = Sources(
         config=ArgosConfig.load(),

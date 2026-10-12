@@ -168,6 +168,14 @@ export interface DoctorResult {
   platforms: Record<string, { name?: string; status?: string; detail?: string; hint?: string | null }>;
 }
 
+export interface LeadSource {
+  id: string;
+  name: string;
+  status: string;
+  detail: string;
+  url: string;
+}
+
 export type Section =
   | "dashboard"
   | "brief"

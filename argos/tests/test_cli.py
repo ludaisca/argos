@@ -588,3 +588,24 @@ def test_ui_command_calls_serve(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert called["port"] == 9999
     assert called["open_browser"] is False
+
+
+def test_leads_enrich_cli_passes_batch_flags(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    csv_path = tmp_path / "leads.csv"
+    csv_path.write_text("Nombre,Correo\nAna,ana@clinicasonrisa.mx\n", encoding="utf-8")
+    captured: dict[str, Any] = {}
+
+    def fake_enrich(leads: Any, **kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return {"rows": 1, "counts": {"medico": 1, "dudoso": 0, "no": 0}, "csv": "x"}
+
+    monkeypatch.setattr("argos.leads.enrich_batch", fake_enrich)
+    result = runner.invoke(
+        cli_mod.app,
+        ["leads", "enrich", str(csv_path), "--batch-size", "2", "--pause-seconds", "5"],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["batch_size"] == 2
+    assert captured["pause_seconds"] == 5.0

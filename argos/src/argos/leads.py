@@ -486,9 +486,16 @@ def enrich_batch(
     sector: str = "medico",
     use_gmaps: bool = True,
     limit: int | None = None,
+    batch_size: int | None = None,
+    pause_seconds: float = 0.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
     sources: Sources | None = None,
 ) -> dict[str, Any]:
-    """Procesa el lote completo (incremental) y devuelve el resumen de salida."""
+    """Procesa el lote completo (incremental) y devuelve el resumen de salida.
+
+    ``batch_size``/``pause_seconds``: procesa en tandas con pausas entre ellas
+    (recomendado para lotes grandes: SearxNG se satura con ráfagas).
+    """
     if sector not in ("medico", "médico"):
         raise UsageError(
             f"sector desconocido: {sector!r}", hint="por ahora: medico"
@@ -508,6 +515,19 @@ def enrich_batch(
     enriched: list[EnrichedLead] = []
     total = len(leads)
     for index, lead in enumerate(leads, 1):
+        if (
+            batch_size
+            and batch_size > 0
+            and index > 1
+            and (index - 1) % batch_size == 0
+            and pause_seconds > 0
+        ):
+            tanda = (index - 1) // batch_size
+            _console.print(
+                f"[dim]pausa de {pause_seconds:.0f}s antes de la tanda {tanda + 1} "
+                f"(SearxNG respira)…[/dim]"
+            )
+            sleep_fn(pause_seconds)
         _console.print(f"[dim]({index}/{total}) {lead.label}[/dim]")
         enriched.append(enrich_lead(lead, sources))
         write_outputs(enriched, out_dir, config=config)
