@@ -63,15 +63,30 @@ argos ui            # abre http://127.0.0.1:8756 en el navegador
 argos ui --port 9000 --no-open
 ```
 
-Cuatro pestañas: **Investigación** (objetivo, preguntas, plataformas IG/FB, targets),
-**Ejecutar** (corrida suelta, cola de trabajos, daemon continuo, consola en vivo),
-**Resultados** (informes renderizados y descargas) y **Ajustes** (API del LLM con
-botón de prueba, cadencia, estado de sesiones y doctor).
+La interfaz está construida con **React 19 + Vite + Tailwind v4 + [coss-ui](https://coss.com/ui)**
+(la librería de componentes de Cal.com — 56 componentes: sidebar, command palette ⌘K,
+tablas, diálogos, toasts, meters, empty states…). Secciones:
+
+- **Estado** — cuota diaria con gauges, actividad reciente, sesiones y daemon.
+- **Investigación** — brief, plataformas (IG/FB/Lugares), targets y preview del plan.
+- **Lugares** — OSM/Google Maps con tabla ordenable y "guardar como corrida".
+- **Ejecutar** — corridas puntuales, cola de trabajos, daemon y consola en vivo.
+- **Resultados** — informes renderizados + descargas (md/CSV/JSONL/SQLite).
+- **Ajustes** — LLM con botón de prueba, cadencia, doctor de sesiones y tema claro/oscuro.
 
 La UI usa exactamente los mismos módulos que el CLI: el brief se guarda en
 `<ARGOS_HOME>/brief.yaml`, los trabajos en `<ARGOS_HOME>/jobs/` y las corridas en
 `<ARGOS_HOME>/runs/` — todo coherente con el modo daemon y el contenedor.
 Con `ARGOS_UI_TOKEN=...` la interfaz queda protegida (header o `?token=`).
+
+**Desarrollo de la UI** (el build se commitea; el contenedor no necesita Node):
+
+```bash
+cd ui
+npm install
+npm run dev      # dev server con proxy a la API local
+npm run build    # compila a src/argos/web/static/ (servido por FastAPI)
+```
 
 ## Agente autónomo (Docker)
 
