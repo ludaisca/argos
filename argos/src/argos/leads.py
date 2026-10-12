@@ -100,13 +100,36 @@ class EnrichedLead:
     queries: list[str] = field(default_factory=list)
 
 
+DEFAULT_LEAD_SOURCES: dict[str, bool] = {
+    "searxng": True,
+    "facebook": True,
+    "gmaps": True,
+    "nominatim": True,
+}
+LEAD_SOURCES_KEY = "leads_sources"
+
+
+def load_lead_sources(config: ArgosConfig) -> dict[str, bool]:
+    """Fuentes activas de Personalizada (``leads_sources`` en la config)."""
+    flags = dict(DEFAULT_LEAD_SOURCES)
+    raw = config.get(LEAD_SOURCES_KEY)
+    if isinstance(raw, dict):
+        for key in flags:
+            if isinstance(raw.get(key), bool):
+                flags[key] = raw[key]
+    return flags
+
+
 @dataclass
 class Sources:
     """Fuentes inyectables (tests) con sus defaults reales."""
 
     config: ArgosConfig
     searx_base: str
+    use_searxng: bool = True
+    use_facebook: bool = True
     use_gmaps: bool = True
+    use_nominatim: bool = True
     searx_fn: Callable[..., list[searxng.SearxResult]] = searxng.search
     places_fn: Callable[..., places_mod.PlacesResult] = places_mod.search
     reverse_fn: Callable[..., dict[str, str] | None] = places_mod.reverse_geocode
@@ -265,17 +288,18 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
 
     empresa = lead.empresa.strip()
     nombre = lead.nombre.strip()
-    if empresa:
+    if sources.use_searxng and empresa:
         run_query(f'"{empresa}"')
         run_query(f'"{empresa}" (médico OR doctor OR clínica OR hospital OR especialista)')
-        run_query(f'site:facebook.com "{empresa}"')
-    if nombre:
+        if sources.use_facebook:
+            run_query(f'site:facebook.com "{empresa}"')
+    if sources.use_searxng and nombre:
         run_query(f'"{nombre}" (médico OR doctor OR clínica OR hospital OR especialista)')
-        if not empresa:
+        if not empresa and sources.use_facebook:
             run_query(f'site:facebook.com "{nombre}"')
-    if lead.telefono:
+    if sources.use_searxng and lead.telefono:
         run_query(f'"{lead.telefono}"', limit=4, retry_empty=False)
-    if lead.correo:
+    if sources.use_searxng and lead.correo:
         run_query(f'"{lead.correo}"', limit=4, retry_empty=False)
 
     result.facebook = _facebook_from_hits(hits)
@@ -322,14 +346,15 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
         result.google_maps = place.url
         result.categoria = place.category
         result.telefono = result.telefono or place.phone
-        if place.lat is not None and place.lon is not None:
+        reverse: dict[str, str] | None = None
+        if sources.use_nominatim and place.lat is not None and place.lon is not None:
             try:
                 reverse = sources.reverse_fn(place.lat, place.lon)
             except ArgosError:
                 reverse = None
-            if reverse:
-                result.entidad = reverse.get("state") or None
-                result.ciudad = reverse.get("city") or None
+        if reverse:
+            result.entidad = reverse.get("state") or None
+            result.ciudad = reverse.get("city") or None
         elif place.address:
             parts = [part.strip() for part in place.address.split(",") if part.strip()]
             if len(parts) >= 2:
@@ -346,9 +371,12 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
     if not hits and place is None:
         result.sector = "dudoso"
         result.sector_confidence = 0.1
-        result.observaciones = (
-            "Sin resultados de búsqueda (SearxNG devolvió vacío; reintentar más tarde)"
+        reason = (
+            "SearxNG desactivado en Fuentes de búsqueda"
+            if not sources.use_searxng
+            else "SearxNG devolvió vacío; reintentar más tarde"
         )
+        result.observaciones = f"Sin resultados de búsqueda ({reason})"
         return result
 
     verdict = medico.classify(
@@ -484,7 +512,10 @@ def enrich_batch(
     out_dir: Path,
     config: ArgosConfig,
     sector: str = "medico",
-    use_gmaps: bool = True,
+    use_searxng: bool | None = None,
+    use_facebook: bool | None = None,
+    use_gmaps: bool | None = None,
+    use_nominatim: bool | None = None,
     limit: int | None = None,
     batch_size: int | None = None,
     pause_seconds: float = 0.0,
@@ -493,8 +524,9 @@ def enrich_batch(
 ) -> dict[str, Any]:
     """Procesa el lote completo (incremental) y devuelve el resumen de salida.
 
-    ``batch_size``/``pause_seconds``: procesa en tandas con pausas entre ellas
-    (recomendado para lotes grandes: SearxNG se satura con ráfagas).
+    Las fuentes activas salen de la config (``leads_sources``); los parámetros
+    ``use_*`` fuerzan on/off solo para esta corrida. ``batch_size`` /
+    ``pause_seconds`` procesa en tandas con pausas (SearxNG se satura con ráfagas).
     """
     if sector not in ("medico", "médico"):
         raise UsageError(
@@ -504,14 +536,28 @@ def enrich_batch(
         raise UsageError("no hay leads para procesar")
     if limit is not None:
         leads = leads[: max(1, limit)]
-    sources = sources or Sources(
-        config=config,
-        searx_base=searxng.resolve_base(config),
-        use_gmaps=use_gmaps,
-        searx_fn=lambda *args, **kwargs: searxng.search(*args, **kwargs),
-        places_fn=lambda *args, **kwargs: places_mod.search(*args, **kwargs),
-        reverse_fn=lambda *args, **kwargs: places_mod.reverse_geocode(*args, **kwargs),
-    )
+    if sources is None:
+        flags = load_lead_sources(config)
+        overrides = {
+            "searxng": use_searxng,
+            "facebook": use_facebook,
+            "gmaps": use_gmaps,
+            "nominatim": use_nominatim,
+        }
+        for key, value in overrides.items():
+            if value is not None:
+                flags[key] = value
+        sources = Sources(
+            config=config,
+            searx_base=searxng.resolve_base(config),
+            use_searxng=flags["searxng"],
+            use_facebook=flags["facebook"],
+            use_gmaps=flags["gmaps"],
+            use_nominatim=flags["nominatim"],
+            searx_fn=lambda *args, **kwargs: searxng.search(*args, **kwargs),
+            places_fn=lambda *args, **kwargs: places_mod.search(*args, **kwargs),
+            reverse_fn=lambda *args, **kwargs: places_mod.reverse_geocode(*args, **kwargs),
+        )
     enriched: list[EnrichedLead] = []
     total = len(leads)
     for index, lead in enumerate(leads, 1):

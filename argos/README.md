@@ -51,6 +51,11 @@ validación de **ramo médico**:
 
 - **Fuentes sin login**: SearxNG propio (web, teléfonos, Facebook), Google Maps (ficha,
   categoría, dirección, teléfono) y Nominatim reverse (Entidad/Ciudad). LinkedIn, después.
+- **Fuentes activables**: en la UI cada una tiene su switch (se guarda en
+  `leads_sources` de `config.yaml`); el pipeline respeta lo activo. Overrides por corrida:
+  `--no-searxng --no-facebook --no-gmaps --no-nominatim`.
+- **Tandas**: `--batch-size 20 --pause-seconds 180` (la UI lo trae puesto por defecto)
+  para lotes grandes sin saturar la búsqueda.
 - **Validación de sector** con señales (categorías médicas, "Dr./Dra.", especialidades,
   IMSS/ISSSTE, dominios…) y **confianza + evidencia** por dato. Lo dudoso **no se auto-llena**.
 - **Tipo de cliente** se mapea al enum del CRM (incluye `No es del ramo`).

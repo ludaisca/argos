@@ -11,7 +11,15 @@ import argos.leads as leads_mod
 from argos import places as places_mod
 from argos import searxng
 from argos.config import ArgosConfig
-from argos.leads import Lead, Sources, enrich_batch, enrich_lead, parse_leads, template_csv
+from argos.leads import (
+    Lead,
+    Sources,
+    enrich_batch,
+    enrich_lead,
+    load_lead_sources,
+    parse_leads,
+    template_csv,
+)
 from argos.sectors import medico
 
 # --------------------------------------------------------------------------- #
@@ -297,6 +305,86 @@ def test_related_texts_enable_type_and_specialty() -> None:
     )
     assert verdict.tipo_cliente == "Dental"
     assert "Odontología" in verdict.especialidades
+
+
+def test_load_lead_sources_defaults_and_config(tmp_path: Path) -> None:
+    config = ArgosConfig.load(tmp_path)
+    assert load_lead_sources(config) == {
+        "searxng": True,
+        "facebook": True,
+        "gmaps": True,
+        "nominatim": True,
+    }
+    config.set("leads_sources", {"gmaps": False, "searxng": "nope", "otra": True})
+    reloaded = ArgosConfig.load(tmp_path)
+    flags = load_lead_sources(reloaded)
+    assert flags["gmaps"] is False
+    assert flags["searxng"] is True
+    assert "otra" not in flags
+
+
+def test_enrich_respects_disabled_sources() -> None:
+    calls = {"searx": 0, "places": 0}
+
+    def counting_searx(*args: Any, **kwargs: Any) -> list[searxng.SearxResult]:
+        calls["searx"] += 1
+        return list(SEARX_HITS)
+
+    def counting_places(*args: Any, **kwargs: Any) -> places_mod.PlacesResult:
+        calls["places"] += 1
+        return _fake_places()
+
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_searxng=False,
+        use_gmaps=False,
+        searx_fn=counting_searx,
+        places_fn=counting_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Ana", empresa="Clínica Dental Sonrisa"), sources)
+    assert calls == {"searx": 0, "places": 0}
+    assert enriched.sector == "dudoso"
+    assert "desactivado" in enriched.observaciones
+
+
+def test_enrich_facebook_toggle_skips_site_queries() -> None:
+    queries: list[str] = []
+
+    def recording_searx(query: str, **kwargs: Any) -> list[searxng.SearxResult]:
+        queries.append(query)
+        return list(SEARX_HITS)
+
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_facebook=False,
+        use_gmaps=False,
+        searx_fn=recording_searx,
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enrich_lead(Lead(empresa="Clínica Dental Sonrisa"), sources)
+    assert queries  # las búsquedas web normales sí corren
+    assert not any("site:facebook.com" in query for query in queries)
+
+
+def test_enrich_nominatim_toggle_uses_address_fallback() -> None:
+    def forbidden_reverse(*args: Any, **kwargs: Any) -> dict[str, str]:
+        raise AssertionError("reverse_geocode no debería llamarse con Nominatim apagado")
+
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_nominatim=False,
+        searx_fn=lambda *args, **kwargs: list(SEARX_HITS),
+        places_fn=_fake_places,
+        reverse_fn=forbidden_reverse,
+    )
+    enriched = enrich_lead(Lead(empresa="Clínica Dental Sonrisa"), sources)
+    assert enriched.entidad == "Puebla"
+    assert enriched.ciudad == "Av. Juárez 123"  # fallback de la dirección de Maps
 
 
 def test_enrich_batch_pauses_between_batches(

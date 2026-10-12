@@ -171,6 +171,7 @@ export interface DoctorResult {
 export interface LeadSource {
   id: string;
   name: string;
+  enabled: boolean;
   status: string;
   detail: string;
   url: string;

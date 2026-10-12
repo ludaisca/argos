@@ -783,6 +783,15 @@ def leads_enrich(
     out: str = typer.Option(None, "--out", help="Carpeta de salida (default ./leads-out/<fecha>)."),
     limit: int = typer.Option(None, "--limit", help="Procesar solo los primeros N leads."),
     no_gmaps: bool = typer.Option(False, "--no-gmaps", help="Sin Google Maps (más rápido)."),
+    no_searxng: bool = typer.Option(
+        False, "--no-searxng", help="Sin búsquedas web (SearxNG) en esta corrida."
+    ),
+    no_facebook: bool = typer.Option(
+        False, "--no-facebook", help="Sin la búsqueda dedicada site:facebook.com."
+    ),
+    no_nominatim: bool = typer.Option(
+        False, "--no-nominatim", help="Sin reverse geocode (Entidad/Ciudad desde Maps)."
+    ),
     batch_size: int = typer.Option(
         None, "--batch-size", help="Procesar en tandas de N leads con pausas (ej: 20)."
     ),
@@ -816,7 +825,10 @@ def leads_enrich(
         out_dir=out_dir,
         config=config,
         sector=sector,
-        use_gmaps=not no_gmaps,
+        use_searxng=False if no_searxng else None,
+        use_facebook=False if no_facebook else None,
+        use_gmaps=False if no_gmaps else None,
+        use_nominatim=False if no_nominatim else None,
         limit=limit,
         batch_size=batch_size,
         pause_seconds=pause_seconds,

@@ -113,10 +113,17 @@ class PlacesSavePayload(PlacesSearchPayload):
 class LeadsEnrichPayload(BaseModel):
     text: str = ""
     sector: Literal["medico"] = "medico"
-    use_gmaps: bool = True
+    use_searxng: bool | None = None
+    use_facebook: bool | None = None
+    use_gmaps: bool | None = None
+    use_nominatim: bool | None = None
     limit: int | None = None
     batch_size: int | None = None
     pause_seconds: float | None = None
+
+
+class LeadsSourcesPayload(BaseModel):
+    enabled: dict[str, bool]
 
 
 # --------------------------------------------------------------------------- #
@@ -894,8 +901,14 @@ def create_app(home: Path | None = None) -> FastAPI:
             "--out",
             str(out_dir),
         ]
-        if not payload.use_gmaps:
+        if payload.use_searxng is False:
+            args.append("--no-searxng")
+        if payload.use_facebook is False:
+            args.append("--no-facebook")
+        if payload.use_gmaps is False:
             args.append("--no-gmaps")
+        if payload.use_nominatim is False:
+            args.append("--no-nominatim")
         if payload.limit:
             args.extend(["--limit", str(payload.limit)])
         if payload.batch_size:
@@ -977,61 +990,85 @@ def create_app(home: Path | None = None) -> FastAPI:
     def leads_sources() -> dict[str, Any]:
         from argos import places as places_mod
         from argos import searxng
+        from argos.leads import load_lead_sources
 
+        flags = load_lead_sources(service.config)
         base = searxng.resolve_base(service.config)
         sources: list[dict[str, Any]] = []
 
         started = time.monotonic()
         searx_ok = False
-        try:
-            found = searxng.search("test", base=base, limit=1, timeout=15)
-            elapsed = time.monotonic() - started
-            searx_ok = bool(found)
-            searx_status = "ok" if found else "degradado"
-            searx_detail = (
-                f"{len(found)} resultado(s) en {elapsed:.1f}s"
-                if found
-                else "respondió pero sin resultados (motores saturados; reintentá en unos minutos)"
-            )
-        except ArgosError as exc:
-            searx_status = "error"
-            searx_detail = str(exc)[:140]
+        searx_status = "off"
+        searx_detail = "Desactivada: no se hacen búsquedas web."
+        if flags["searxng"]:
+            try:
+                found = searxng.search("test", base=base, limit=1, timeout=15)
+                elapsed = time.monotonic() - started
+                searx_ok = bool(found)
+                searx_status = "ok" if found else "degradado"
+                searx_detail = (
+                    f"{len(found)} resultado(s) en {elapsed:.1f}s"
+                    if found
+                    else "respondió pero sin resultados (saturado; reintentá en unos minutos)"
+                )
+            except ArgosError as exc:
+                searx_status = "error"
+                searx_detail = str(exc)[:140]
         sources.append(
             {
                 "id": "searxng",
                 "name": "SearxNG — web general",
+                "enabled": flags["searxng"],
                 "status": searx_status,
                 "detail": searx_detail,
                 "url": base,
             }
         )
+        if not flags["facebook"]:
+            fb_status = "off"
+            fb_detail = "Desactivada: sin búsqueda dedicada site:facebook.com."
+        elif not flags["searxng"]:
+            fb_status = "degradado"
+            fb_detail = "Requiere SearxNG activado."
+        elif searx_ok:
+            fb_status = "ok"
+            fb_detail = "búsqueda site:facebook.com · no usa tu sesión de Facebook"
+        else:
+            fb_status = "degradado"
+            fb_detail = "Depende de SearxNG (ahora saturado)."
         sources.append(
             {
                 "id": "facebook",
                 "name": "Facebook — vía SearxNG (site:facebook.com)",
-                "status": "ok" if searx_ok else "degradado",
-                "detail": "busca la página del negocio sin usar tu sesión de Facebook",
+                "enabled": flags["facebook"],
+                "status": fb_status,
+                "detail": fb_detail,
                 "url": "https://www.facebook.com",
             }
         )
 
-        started = time.monotonic()
-        try:
-            reverse = places_mod.reverse_geocode(19.043, -98.198, timeout=15)
-            elapsed = time.monotonic() - started
-            geo_status = "ok" if reverse else "degradado"
-            geo_detail = (
-                f"{reverse.get('city') or '—'}, {reverse.get('state') or '—'} en {elapsed:.1f}s"
-                if reverse
-                else "respondió sin dirección"
-            )
-        except ArgosError as exc:
-            geo_status = "error"
-            geo_detail = str(exc)[:140]
+        geo_status = "off"
+        geo_detail = "Desactivada: Entidad/Ciudad quedan vacías (salvo la dirección de Maps)."
+        if flags["nominatim"]:
+            started = time.monotonic()
+            try:
+                reverse = places_mod.reverse_geocode(19.043, -98.198, timeout=15)
+                elapsed = time.monotonic() - started
+                geo_status = "ok" if reverse else "degradado"
+                geo_detail = (
+                    f"{reverse.get('city') or '—'}, {reverse.get('state') or '—'} "
+                    f"en {elapsed:.1f}s"
+                    if reverse
+                    else "respondió sin dirección"
+                )
+            except ArgosError as exc:
+                geo_status = "error"
+                geo_detail = str(exc)[:140]
         sources.append(
             {
                 "id": "nominatim",
                 "name": "Nominatim — Entidad y Ciudad",
+                "enabled": flags["nominatim"],
                 "status": geo_status,
                 "detail": geo_detail,
                 "url": "https://nominatim.openstreetmap.org",
@@ -1041,10 +1078,13 @@ def create_app(home: Path | None = None) -> FastAPI:
             {
                 "id": "gmaps",
                 "name": "Google Maps — ficha del lugar",
-                "status": "on-demand",
+                "enabled": flags["gmaps"],
+                "status": "on-demand" if flags["gmaps"] else "off",
                 "detail": (
                     "scraper local (Playwright, sin login): se usa cuando el lead trae "
                     "empresa/clínica o el nombre parece institución"
+                    if flags["gmaps"]
+                    else "Desactivada: sin ficha de lugar, categoría ni teléfono de Maps."
                 ),
                 "url": "https://www.google.com/maps",
             }
@@ -1053,6 +1093,21 @@ def create_app(home: Path | None = None) -> FastAPI:
             "sources": sources,
             "checked_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
         }
+
+    @app.put("/api/leads/sources")
+    def put_leads_sources(payload: LeadsSourcesPayload) -> dict[str, Any]:
+        from argos.leads import DEFAULT_LEAD_SOURCES, load_lead_sources
+
+        unknown = sorted(key for key in payload.enabled if key not in DEFAULT_LEAD_SOURCES)
+        if unknown:
+            raise HTTPException(422, f"fuente desconocida: {', '.join(unknown)}")
+        flags = load_lead_sources(service.config)
+        for key, value in payload.enabled.items():
+            if not isinstance(value, bool):
+                raise HTTPException(422, f"enabled.{key} debe ser true/false")
+            flags[key] = value
+        service.config.set("leads_sources", flags)
+        return {"enabled": flags}
 
     # ----- doctor ----- #
 

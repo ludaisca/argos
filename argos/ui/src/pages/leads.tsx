@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DownloadIcon,
   ExternalLinkIcon,
   FileSpreadsheetIcon,
   Loader2Icon,
   PlayIcon,
-  RadarIcon,
   RefreshCwIcon,
   StethoscopeIcon,
   TriangleAlertIcon,
@@ -51,11 +50,12 @@ interface LeadsRunInfo {
   csv: boolean;
 }
 
-const SOURCE_VARIANT: Record<string, "success" | "warning" | "error" | "info"> = {
+const SOURCE_VARIANT: Record<string, "success" | "warning" | "error" | "info" | "outline"> = {
   ok: "success",
   degradado: "warning",
   error: "error",
   "on-demand": "info",
+  off: "outline",
 };
 
 const SAMPLE_TEXT = [
@@ -73,7 +73,6 @@ const RAMO_VARIANT: Record<string, "success" | "warning" | "error"> = {
 export function LeadsTab() {
   const { run, track } = useArgos();
   const [text, setText] = useState(SAMPLE_TEXT);
-  const [useGmaps, setUseGmaps] = useState(true);
   const [batchMode, setBatchMode] = useState(true);
   const [batchSize, setBatchSize] = useState("20");
   const [limit, setLimit] = useState("");
@@ -121,15 +120,54 @@ export function LeadsTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const sourceEpoch = useRef(0);
+
   const refreshSources = async () => {
+    const epoch = sourceEpoch.current;
     setCheckingSources(true);
     try {
       const data = await api<{ sources: LeadSource[] }>("/api/leads/sources");
-      setSources(data.sources);
+      if (sourceEpoch.current === epoch) {
+        setSources(data.sources);
+      }
     } catch {
       /* silencioso */
     } finally {
       setCheckingSources(false);
+    }
+  };
+
+  const toggleSource = async (id: string, enabled: boolean) => {
+    sourceEpoch.current += 1;
+    setSources((prev) =>
+      prev.map((source) => (source.id === id ? { ...source, enabled } : source)),
+    );
+    try {
+      const data = await api<{ enabled: Record<string, boolean> }>("/api/leads/sources", {
+        method: "PUT",
+        body: { enabled: { [id]: enabled } },
+      });
+      sourceEpoch.current += 1;
+      setSources((prev) =>
+        prev.map((source) =>
+          source.id in data.enabled ? { ...source, enabled: data.enabled[source.id] } : source,
+        ),
+      );
+      notify(
+        data.enabled[id] ? "Fuente activada" : "Fuente desactivada",
+        "Guardado en tu configuración · aplica al próximo lote",
+        "success",
+      );
+    } catch (error) {
+      sourceEpoch.current += 1;
+      setSources((prev) =>
+        prev.map((source) => (source.id === id ? { ...source, enabled: !enabled } : source)),
+      );
+      notify(
+        "No se pudo guardar la fuente",
+        error instanceof Error ? error.message : String(error),
+        "error",
+      );
     }
   };
 
@@ -157,7 +195,6 @@ export function LeadsTab() {
         body: {
           text,
           sector: "medico",
-          use_gmaps: useGmaps,
           limit: limit ? Number(limit) : null,
           batch_size: batchMode ? Number(batchSize) || 20 : null,
           pause_seconds: batchMode ? 180 : null,
@@ -192,9 +229,8 @@ export function LeadsTab() {
         <CardHeader>
           <CardTitle>Fuentes de búsqueda</CardTitle>
           <CardDescription>
-            Esto consulta el enriquecimiento por lead. El log de cada lote muestra cuántos
-            resultados devolvió cada búsqueda, y la columna Evidencias guarda los links
-            encontrados.
+            Activá o desactivá las fuentes del enriquecimiento — se guardan al instante y
+            aplican al próximo lote. Los estados (ok / degradado) son un chequeo en vivo.
           </CardDescription>
           <CardAction>
             <Button
@@ -216,11 +252,17 @@ export function LeadsTab() {
             sources.map((source) => (
               <div
                 key={source.id}
-                className="flex items-start justify-between gap-3 rounded-lg border px-3 py-2"
+                className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 ${
+                  source.enabled ? "" : "bg-muted/40"
+                }`}
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <RadarIcon className="size-3.5 shrink-0" />
+                    <Switch
+                      checked={source.enabled}
+                      onCheckedChange={(checked) => void toggleSource(source.id, checked)}
+                      aria-label={`Activar ${source.name}`}
+                    />
                     {source.name}
                   </div>
                   <p className="truncate text-xs text-muted-foreground" title={source.detail}>
@@ -228,8 +270,12 @@ export function LeadsTab() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Badge variant={SOURCE_VARIANT[source.status] ?? "outline"}>
-                    {source.status}
+                  <Badge
+                    variant={
+                      source.enabled ? (SOURCE_VARIANT[source.status] ?? "outline") : "outline"
+                    }
+                  >
+                    {source.enabled ? source.status : "desactivada"}
                   </Badge>
                   <a
                     href={source.url}
@@ -278,12 +324,6 @@ export function LeadsTab() {
               <FieldDescription>Un lead por línea; hasta cientos por lote.</FieldDescription>
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
-                <span className="flex items-center gap-2">
-                  <StethoscopeIcon className="size-4" /> Usar Google Maps
-                </span>
-                <Switch checked={useGmaps} onCheckedChange={(checked) => setUseGmaps(checked)} />
-              </label>
               <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
                 <span className="flex items-center gap-2">
                   <RefreshCwIcon className="size-4" /> Procesar en tandas
