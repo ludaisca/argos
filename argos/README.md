@@ -36,6 +36,23 @@ argos mcp                # servidor MCP (stdio) con las lecturas como tools tipa
   llamás `fb_search`, `ig_profile`, `doctor`, `quota`, etc. como herramientas tipadas.
 - Contrato estable: `--json` va a stdout, el progreso a stderr, exit codes 0–5.
 
+## Interfaz web (local)
+
+```bash
+argos ui            # abre http://127.0.0.1:8756 en el navegador
+argos ui --port 9000 --no-open
+```
+
+Cuatro pestañas: **Investigación** (objetivo, preguntas, plataformas IG/FB, targets),
+**Ejecutar** (corrida suelta, cola de trabajos, daemon continuo, consola en vivo),
+**Resultados** (informes renderizados y descargas) y **Ajustes** (API del LLM con
+botón de prueba, cadencia, estado de sesiones y doctor).
+
+La UI usa exactamente los mismos módulos que el CLI: el brief se guarda en
+`<ARGOS_HOME>/brief.yaml`, los trabajos en `<ARGOS_HOME>/jobs/` y las corridas en
+`<ARGOS_HOME>/runs/` — todo coherente con el modo daemon y el contenedor.
+Con `ARGOS_UI_TOKEN=...` la interfaz queda protegida (header o `?token=`).
+
 ## Agente autónomo (Docker)
 
 Argos puede correr **como agente**: le das una API de LLM, un objetivo y las credenciales,

@@ -271,6 +271,55 @@ def test_jobs_dir_for_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert jobs_dir_for(ArgosConfig.load()) == tmp_path / "cola"
 
 
+def test_plan_targets_respects_platforms(monkeypatch: pytest.MonkeyPatch) -> None:
+    prompts: list[str] = []
+
+    def fake_chat(settings: Any, messages: Any, **kwargs: Any) -> str:
+        prompts.append(messages[-1]["content"])
+        return json.dumps(
+            {
+                "targets": [
+                    {"type": "ig_hashtag", "value": "x"},
+                    {"type": "fb_page", "value": "y"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(agent_mod, "chat", fake_chat)
+    plan = plan_targets(SETTINGS, Brief(objective="solo IG", platforms=["instagram"]))
+    assert all(item["type"].startswith("ig_") for item in plan)
+    allowed_block = prompts[0].split("Tipos de target permitidos:")[1].split("\n")[0]
+    assert "fb_page" not in allowed_block
+    assert "ig_hashtag" in allowed_block
+
+
+def test_plan_targets_errors_when_all_filtered(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        agent_mod,
+        "chat",
+        lambda *a, **k: json.dumps({"targets": [{"type": "fb_page", "value": "y"}]}),
+    )
+    with pytest.raises(LLMError, match="plataformas"):
+        plan_targets(SETTINGS, Brief(objective="x", platforms=["instagram"]))
+
+
+def test_load_brief_platforms_validated(tmp_path: Path) -> None:
+    path = tmp_path / "brief.yaml"
+    path.write_text(
+        "job: J\nobjective: O\nplatforms:\n  - Instagram\n  - tiktok\n",
+        encoding="utf-8",
+    )
+    brief = load_brief(path=path)
+    assert brief.platforms == ["instagram"]
+
+
+def test_load_brief_platforms_default_all(tmp_path: Path) -> None:
+    path = tmp_path / "brief.yaml"
+    path.write_text("job: J\nobjective: O\n", encoding="utf-8")
+    brief = load_brief(path=path)
+    assert brief.platforms == ["facebook", "instagram"]
+
+
 def test_apply_env_cookies_from_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, isolated_home
 ) -> None:

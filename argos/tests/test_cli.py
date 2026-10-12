@@ -573,3 +573,18 @@ def test_agent_daemon_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert len(calls) == 1
     assert "brief_provider" in calls[0]
+
+
+def test_ui_command_calls_serve(monkeypatch: pytest.MonkeyPatch) -> None:
+    import argos.web
+
+    called: dict[str, Any] = {}
+
+    def fake_serve(**kwargs: Any) -> None:
+        called.update(kwargs)
+
+    monkeypatch.setattr(argos.web, "serve", fake_serve)
+    result = runner.invoke(cli_mod.app, ["ui", "--no-open", "--port", "9999"])
+    assert result.exit_code == 0
+    assert called["port"] == 9999
+    assert called["open_browser"] is False

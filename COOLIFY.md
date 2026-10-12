@@ -130,6 +130,10 @@ EOF
 - Alternativa on-demand: **Scheduled Tasks** de Coolify → comando
   `argos agent run --brief /data/jobs/tema.yaml` (botón *Execute now* o cron propio).
 
+> Nota: la interfaz web (`argos ui`) hoy se usa **en local**. Para exponerla en este
+> Coolify más adelante: el mismo repo, comando `ui --host 0.0.0.0`, FQDN propio y
+> `ARGOS_UI_TOKEN` obligatorio.
+
 ## Capacidades del MCP (iguales en ambas instancias)
 
 - **Puede:** inspeccionar todo (servidores, proyectos, apps, storages, env keys sin

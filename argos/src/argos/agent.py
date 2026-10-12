@@ -84,6 +84,7 @@ class Brief:
     questions: list[str] = field(default_factory=list)
     targets: list[dict[str, Any]] = field(default_factory=list)
     max_targets: int = MAX_TARGETS
+    platforms: list[str] = field(default_factory=lambda: sorted(set(TARGET_PLATFORM.values())))
 
 
 @dataclass
@@ -163,12 +164,24 @@ def load_brief(*, path: Path | None = None, text: str | None = None) -> Brief:
         max_targets = int(data.get("max_targets") or MAX_TARGETS)
     except (TypeError, ValueError):
         max_targets = MAX_TARGETS
+    valid_platforms = set(TARGET_PLATFORM.values())
+    platforms_raw = data.get("platforms")
+    platforms: list[str] = []
+    if isinstance(platforms_raw, list):
+        platforms = [
+            str(item).strip().lower()
+            for item in platforms_raw
+            if str(item).strip().lower() in valid_platforms
+        ]
+    if not platforms:
+        platforms = sorted(valid_platforms)
     return Brief(
         name=str(data.get("job") or "research"),
         objective=objective,
         questions=questions,
         targets=targets,
         max_targets=max(1, min(max_targets, 12)),
+        platforms=platforms,
     )
 
 
@@ -212,10 +225,18 @@ def apply_env_cookies(config: ArgosConfig) -> list[str]:
 
 def plan_targets(settings: LLMSettings, brief: Brief) -> list[dict[str, Any]]:
     """Pide al LLM un plan de targets, lo valida y lo acota."""
+    allowed_types = sorted(
+        ttype for ttype, platform in TARGET_PLATFORM.items() if platform in brief.platforms
+    )
+    if not allowed_types:
+        raise UsageError(
+            "no hay tipos de target para las plataformas elegidas",
+            hint=f"plataformas válidas: {', '.join(sorted(set(TARGET_PLATFORM.values())))}",
+        )
     prompt = PLANNER_USER.format(
         objective=brief.objective,
         questions="; ".join(brief.questions) or "(ninguna en particular)",
-        types=", ".join(TARGET_PLATFORM),
+        types=", ".join(allowed_types),
         max_targets=brief.max_targets,
         limit_cap=TARGET_LIMIT_CAP,
     )
@@ -234,6 +255,13 @@ def plan_targets(settings: LLMSettings, brief: Brief) -> list[dict[str, Any]]:
         parsed: list[Target] = parse_targets(data["targets"][: brief.max_targets])
     except UsageError as exc:
         raise LLMError(f"el plan del LLM no es válido: {exc}") from exc
+    parsed = [
+        target
+        for target in parsed
+        if TARGET_PLATFORM.get(target.type) in brief.platforms
+    ]
+    if not parsed:
+        raise LLMError("el plan del LLM no incluyó targets de las plataformas elegidas")
 
     plan: list[dict[str, Any]] = []
     for target in parsed:
@@ -362,7 +390,7 @@ def run_once(
     if not plan:
         raise ArgosError("el plan quedó vacío (revisá el brief)")
 
-    plan_data = {"job": brief.name, "headless": True, "targets": plan}
+    plan_data = {"job": brief.name, "headless": True, "targets": plan, "platforms": brief.platforms}
     plan_path = run_dir / "plan.yaml"
     plan_path.write_text(
         yaml.safe_dump(plan_data, allow_unicode=True, sort_keys=False), encoding="utf-8"
@@ -392,6 +420,7 @@ def run_once(
             {
                 "job": brief.name,
                 "objective": brief.objective,
+                "platforms": brief.platforms,
                 "generated_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
                 "plan_source": plan_source,
                 "plan": plan,

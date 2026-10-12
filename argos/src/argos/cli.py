@@ -584,6 +584,23 @@ def agent_daemon(
 app.add_typer(agent_app, name="agent")
 
 
+@app.command("ui")
+@_guard
+def ui(
+    host: str = typer.Option(
+        "127.0.0.1", "--host", help="Interfaz a escuchar (0.0.0.0 para exponer)."
+    ),
+    port: int = typer.Option(8756, "--port", help="Puerto HTTP."),
+    open_browser: bool = typer.Option(
+        True, "--open/--no-open", help="Abrir el navegador al arrancar."
+    ),
+) -> None:
+    """Interfaz web local: brief, LLM, plataformas, corridas y resultados."""
+    from argos.web import serve
+
+    serve(host=host, port=port, open_browser=open_browser)
+
+
 # ── Instagram (lectura, DOM-first, con límites) ─────────────────────
 
 ig_app = typer.Typer(
