@@ -85,7 +85,15 @@ function mdToHtml(src) {
   return html;
 }
 
-const platformLabel = (p) => p.charAt(0).toUpperCase() + p.slice(1);
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const platformLabel = (p) =>
+  state.meta?.platform_labels?.[p] || p.charAt(0).toUpperCase() + p.slice(1);
 
 /* ── estado ─────────────────────────────────────────────────────────── */
 
@@ -171,6 +179,22 @@ function fillKindSelect(select, type, current) {
   select.value = current && options.includes(current) ? current : "";
 }
 
+function buildKindCell(typeSelect, current) {
+  if (typeSelect.value === "places_search") {
+    const input = document.createElement("input");
+    input.placeholder = "zona (ej: Puebla, MX)";
+    input.value = current || "";
+    return input;
+  }
+  const select = document.createElement("select");
+  fillKindSelect(select, typeSelect.value, current);
+  return select;
+}
+
+const TYPE_HINTS = {
+  places_search: "qué buscar (ej: restaurantes)",
+};
+
 function addTargetRow(target = {}) {
   const tbody = $("targets-table").querySelector("tbody");
   const tr = document.createElement("tr");
@@ -195,16 +219,29 @@ function addTargetRow(target = {}) {
   limitIn.max = state.meta?.target_limit_cap || 20;
   limitIn.value = target.limit || 12;
 
-  const kindSel = document.createElement("select");
-  fillKindSelect(kindSel, typeSel.value, target.kind);
-  typeSel.addEventListener("change", () => fillKindSelect(kindSel, typeSel.value, null));
+  const kindCell = document.createElement("td");
+  const refreshKindCell = (current) => {
+    kindCell.innerHTML = "";
+    kindCell.append(buildKindCell(typeSel, current));
+  };
+  refreshKindCell(target.kind);
+
+  const refreshHints = () => {
+    valueIn.placeholder =
+      TYPE_HINTS[typeSel.value] || "usuario / etiqueta / término / URL";
+  };
+  refreshHints();
+  typeSel.addEventListener("change", () => {
+    refreshKindCell(null);
+    refreshHints();
+  });
 
   const del = document.createElement("button");
   del.textContent = "✕";
   del.title = "Quitar";
   del.addEventListener("click", () => tr.remove());
 
-  tr.append(td(typeSel), td(valueIn), td(limitIn), td(kindSel), td(del));
+  tr.append(td(typeSel), td(valueIn), td(limitIn), kindCell, td(del));
   tr.lastChild.classList.add("actions");
   tbody.append(tr);
 }
@@ -216,7 +253,7 @@ function collectTargets() {
       const type = cells[0].querySelector("select").value;
       const value = cells[1].querySelector("input").value.trim();
       const limit = parseInt(cells[2].querySelector("input").value, 10) || 12;
-      const kind = cells[3].querySelector("select").value;
+      const kind = cells[3].querySelector("select, input").value;
       const item = { type, limit };
       if (value) item.value = value;
       if (kind) item.kind = kind;
@@ -498,6 +535,114 @@ async function selectRun(name) {
   }
 }
 
+/* ── lugares ────────────────────────────────────────────────────────── */
+
+const placesState = {
+  places: [],
+  center: null,
+  query: "",
+  location: null,
+  provider: "osm",
+  radius_km: 5,
+  limit: 25,
+};
+
+async function searchPlaces() {
+  const body = {
+    query: $("p-query").value.trim(),
+    location: $("p-location").value.trim() || null,
+    radius_km: parseFloat($("p-radius").value) || 5,
+    limit: parseInt($("p-limit").value, 10) || 25,
+    provider: $("p-provider").value,
+  };
+  if (!body.query) { toast("Falta qué buscar", true); return; }
+  $("p-state").textContent = "Buscando…";
+  $("p-search").disabled = true;
+  try {
+    const data = await api("/api/places/search", { method: "POST", body });
+    placesState.places = data.places || [];
+    placesState.center = data.center || null;
+    placesState.query = body.query;
+    placesState.location = body.location;
+    placesState.provider = body.provider;
+    placesState.radius_km = body.radius_km;
+    placesState.limit = body.limit;
+    renderPlaces();
+    $("p-state").textContent = data.detail || "";
+    toast(`${placesState.places.length} lugares`);
+  } catch (e) {
+    $("p-state").textContent = "";
+    toast(e.message, true);
+  }
+  $("p-search").disabled = false;
+}
+
+function renderPlaces() {
+  const box = $("p-results");
+  const places = placesState.places;
+  $("p-count").textContent = places.length ? `(${places.length})` : "";
+  $("p-save").classList.toggle("hidden", !places.length);
+
+  const mapLink = $("p-map-link");
+  mapLink.classList.remove("hidden");
+  if (placesState.center) {
+    mapLink.href = `https://www.openstreetmap.org/#map=14/${placesState.center.lat}/${placesState.center.lon}`;
+  } else {
+    const q = encodeURIComponent(
+      [placesState.query, placesState.location].filter(Boolean).join(" ")
+    );
+    mapLink.href = `https://www.google.com/maps/search/${q}`;
+  }
+
+  if (!places.length) {
+    box.className = "muted";
+    box.textContent = "Sin resultados.";
+    return;
+  }
+  const rows = places
+    .map((place) => {
+      const name = escapeHtml(place.name || "");
+      const link = place.url
+        ? `<a href="${escapeHtml(place.url)}" target="_blank" rel="noopener">${name}</a>`
+        : name;
+      const rating = place.rating
+        ? `${place.rating}${place.reviews ? ` (${place.reviews})` : ""}`
+        : "";
+      const distance = place.distance_km != null ? `${place.distance_km} km` : "";
+      const web = place.website
+        ? `<a href="${escapeHtml(place.website)}" target="_blank" rel="noopener">web</a>`
+        : "";
+      return `<tr><td>${link}</td><td>${escapeHtml(place.category || "")}</td><td>${escapeHtml(place.address || "")}</td><td>${escapeHtml(place.phone || "")}</td><td>${web}</td><td>${escapeHtml(place.opening_hours || "")}</td><td>${rating}</td><td>${distance}</td></tr>`;
+    })
+    .join("");
+  box.className = "";
+  box.innerHTML = `<table><thead><tr><th>Nombre</th><th>Categoría</th><th>Dirección</th><th>Teléfono</th><th>Web</th><th>Horario</th><th>Rating</th><th>Dist.</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function savePlaces() {
+  if (!placesState.places.length) return;
+  $("p-state").textContent = "Guardando…";
+  try {
+    const res = await api("/api/places/save", {
+      method: "POST",
+      body: {
+        query: placesState.query,
+        location: placesState.location,
+        radius_km: placesState.radius_km,
+        limit: placesState.limit,
+        provider: placesState.provider,
+        center: placesState.center,
+        places: placesState.places,
+      },
+    });
+    toast(`Guardado: ${res.run_name}`);
+    $("p-state").textContent = `corrida: ${res.run_name} (mirá Resultados)`;
+    refreshRuns();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
 /* ── ajustes ────────────────────────────────────────────────────────── */
 
 async function loadSettings() {
@@ -663,6 +808,11 @@ $("t-add").addEventListener("click", () => addTargetRow());
 $("r-run").addEventListener("click", startRun);
 $("r-cancel").addEventListener("click", cancelRun);
 $("j-queue").addEventListener("click", queueCurrentBrief);
+$("p-search").addEventListener("click", searchPlaces);
+$("p-save").addEventListener("click", savePlaces);
+$("p-query").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") searchPlaces();
+});
 $("d-start").addEventListener("click", daemonStart);
 $("d-stop").addEventListener("click", daemonStop);
 $("s-save").addEventListener("click", () => saveSettings().catch((e) => toast(e.message, true)));

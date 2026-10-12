@@ -20,6 +20,7 @@
 | 7. Opcional | pendiente | `argos watch` (monitoreo con diff) |
 | 8. Agente autónomo + Docker | ✅ hecha y verificada | `argos agent plan/run/daemon`: brief → plan (LLM) → recolección → análisis (LLM) → informe; LLM provider-agnostic (env); Dockerfile + compose + `.env.example` + `DOCKER.md`; validado end-to-end con un LLM local simulado |
 | 9. Interfaz web local | ✅ hecha y verificada | `argos ui` (FastAPI + SPA): brief con selección de plataformas IG/FB, ajustes del LLM con prueba real, preview del plan, corridas en vivo con consola, cola de trabajos, daemon con start/stop, resultados con informes renderizados y descargas, doctor de sesiones; playtest local con Gemini 3.8 Flash y datos reales |
+| 10. Lugares sin costo | ✅ hecha y verificada | `argos places search` + pestaña Lugares + target `places_search`: OSM (Nominatim+Overpass, respaldo Photon, ~50 categorías es/en, sin API key) y Google Maps por scraping (rating real); dataset `places` con CSV/SQLite/informe; probado en vivo con Puebla (cafés, farmacias, ratings) |
 
 ### Verificación de Fase 2 (2026-09-30)
 

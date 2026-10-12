@@ -23,6 +23,7 @@ DATASETS: dict[str, tuple[str, tuple[str, ...]]] = {
     "profiles": ("profiles.jsonl", ("platform", "username")),
     "comments": ("comments.jsonl", ("post_url", "id")),
     "search": ("search.jsonl", ("platform", "url")),
+    "places": ("places.jsonl", ("source", "id")),
 }
 
 CSV_COLUMNS: dict[str, list[str]] = {
@@ -36,6 +37,11 @@ CSV_COLUMNS: dict[str, list[str]] = {
     ],
     "comments": ["platform", "post_url", "id", "author", "text", "age_text", "created_at", "url"],
     "search": ["platform", "type", "username", "name", "followers", "url"],
+    "places": [
+        "source", "id", "name", "category", "address", "phone", "website",
+        "opening_hours", "rating", "reviews", "distance_km", "lat", "lon",
+        "url", "query", "location",
+    ],
 }
 
 
@@ -79,6 +85,14 @@ def render_markdown(datasets: dict[str, list[dict[str, Any]]], *, title: str) ->
             counts[key] = counts.get(key, 0) + 1
         detail = ", ".join(f"{key} {value}" for key, value in sorted(counts.items()))
         lines.append(f"- **{name}**: {len(records)}" + (f" ({detail})" if detail else ""))
+    places = datasets.get("places", [])
+    if places:
+        sources: dict[str, int] = {}
+        for record in places:
+            key = str(record.get("source") or "?")
+            sources[key] = sources.get(key, 0) + 1
+        detail = ", ".join(f"{key} {value}" for key, value in sorted(sources.items()))
+        lines.append(f"- **places**: {len(places)}" + (f" ({detail})" if detail else ""))
     lines.append("")
 
     platforms = sorted(
@@ -169,7 +183,36 @@ def render_markdown(datasets: dict[str, list[dict[str, Any]]], *, title: str) ->
             lines += _table(rows, ["nombre", "tipo", "seguidores", "url"])
             lines.append("")
 
-    if not platforms:
+    if places:
+        lines.append("## Lugares")
+        lines.append("")
+        rows = []
+        for record in places:
+            name = _truncate(record.get("name"), 42) or "—"
+            url = str(record.get("url") or "")
+            link = f"[{name}]({url})" if url else name
+            rating = record.get("rating")
+            reviews = record.get("reviews")
+            score = f"{rating} ({compact_number(reviews)})" if rating else ""
+            distance = record.get("distance_km")
+            rows.append(
+                [
+                    link,
+                    _truncate(record.get("category"), 20) or "—",
+                    _truncate(record.get("address"), 46) or "—",
+                    str(record.get("phone") or ""),
+                    str(record.get("website") or ""),
+                    score,
+                    f"{distance} km" if distance not in (None, "") else "",
+                ]
+            )
+        lines += _table(
+            rows,
+            ["nombre", "categoría", "dirección", "teléfono", "web", "rating", "distancia"],
+        )
+        lines.append("")
+
+    if not platforms and not places:
         lines.append("_No hay datos en esta carpeta (¿corriste algún comando con `--out`?)._")
     return "\n".join(lines).rstrip() + "\n"
 

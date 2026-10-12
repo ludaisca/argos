@@ -317,7 +317,7 @@ def test_load_brief_platforms_default_all(tmp_path: Path) -> None:
     path = tmp_path / "brief.yaml"
     path.write_text("job: J\nobjective: O\n", encoding="utf-8")
     brief = load_brief(path=path)
-    assert brief.platforms == ["facebook", "instagram"]
+    assert brief.platforms == ["facebook", "instagram", "places"]
 
 
 def test_apply_env_cookies_from_dir(

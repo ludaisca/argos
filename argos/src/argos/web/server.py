@@ -10,6 +10,7 @@ Bearer …`` o ``?token=…``).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import os
@@ -29,7 +30,7 @@ import yaml
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from argos.agent import (
     MAX_TARGETS,
@@ -49,9 +50,12 @@ from argos.llm import (
     chat,
     resolve_llm_settings,
 )
+from argos.models import Place
 from argos.private_fs import atomic_write_private_text
 from argos.quota import quota_report
+from argos.report import build_report
 from argos.research import TARGET_PLATFORM
+from argos.store import append_unique_jsonl
 
 STATIC_DIR = Path(__file__).parent / "static"
 _TARGET_LIMIT_CAP = 20
@@ -91,6 +95,19 @@ class DaemonPayload(BaseModel):
 class JobPayload(BriefPayload):
     filename: str | None = None
     overwrite: bool = False
+
+
+class PlacesSearchPayload(BaseModel):
+    query: str = ""
+    location: str | None = None
+    radius_km: float = 5.0
+    limit: int = 25
+    provider: Literal["osm", "gmaps"] = "osm"
+
+
+class PlacesSavePayload(PlacesSearchPayload):
+    places: list[dict[str, Any]] = []
+    center: dict[str, Any] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -507,6 +524,11 @@ def _meta_payload(service: UIService) -> dict[str, Any]:
         "jobs_dir": str(service.jobs_dir()),
         "runs_dir": str(service.runs_dir()),
         "platforms": platforms,
+        "platform_labels": {
+            "instagram": "Instagram",
+            "facebook": "Facebook",
+            "places": "Lugares (OSM/Google)",
+        },
         "target_types": {
             platform: sorted(
                 ttype for ttype, mapped in TARGET_PLATFORM.items() if mapped == platform
@@ -750,6 +772,86 @@ def create_app(home: Path | None = None) -> FastAPI:
     @app.delete("/api/daemon")
     def daemon_stop() -> dict[str, Any]:
         return service.daemon_stop()
+
+    # ----- lugares ----- #
+
+    @app.post("/api/places/search")
+    def places_search(payload: PlacesSearchPayload) -> dict[str, Any]:
+        from argos import places as places_mod
+
+        try:
+            result = places_mod.search(
+                payload.query,
+                location=payload.location,
+                radius_km=payload.radius_km,
+                limit=payload.limit,
+                provider=payload.provider,
+                config=service.config,
+                headless=True,
+            )
+        except ArgosError as exc:
+            raise HTTPException(502, str(exc)) from exc
+        center = None
+        if result.center is not None:
+            center = {
+                "lat": result.center.lat,
+                "lon": result.center.lon,
+                "label": result.center.label,
+            }
+        return {
+            "provider": payload.provider,
+            "detail": result.detail,
+            "places": [place.model_dump(mode="json") for place in result.places],
+            "center": center,
+        }
+
+    @app.post("/api/places/save")
+    def places_save(payload: PlacesSavePayload) -> dict[str, Any]:
+        if not payload.places:
+            raise HTTPException(422, "no hay lugares para guardar")
+        records: list[Place] = []
+        for item in payload.places:
+            try:
+                records.append(Place.model_validate(item))
+            except ValidationError as exc:
+                raise HTTPException(422, f"lugar inválido: {exc.errors()[:2]}") from exc
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "-", f"lugares-{payload.query}").strip("-")[:40]
+        run_dir = service.runs_dir() / f"{slug or 'lugares'}-{stamp}"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        append_unique_jsonl(run_dir / "places.jsonl", records, ("source", "id"))
+        objective = f"Buscar lugares: {payload.query}" + (
+            f" en {payload.location}" if payload.location else ""
+        )
+        meta = {
+            "job": objective,
+            "objective": objective,
+            "platforms": ["places"],
+            "generated_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
+            "plan_source": "manual",
+            "plan": [
+                {
+                    "type": "places_search",
+                    "value": payload.query,
+                    "kind": payload.location,
+                    "limit": payload.limit,
+                }
+            ],
+            "results": [
+                {
+                    "target": f"places_search:{payload.query}",
+                    "status": "ok",
+                    "written": {"places": len(records)},
+                    "actions": 1,
+                }
+            ],
+        }
+        (run_dir / "run.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        with contextlib.suppress(ArgosError):
+            build_report(run_dir, title=objective)
+        return {"run_name": run_dir.name, "run_dir": str(run_dir), "count": len(records)}
 
     # ----- doctor ----- #
 

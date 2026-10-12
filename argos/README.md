@@ -36,6 +36,26 @@ argos mcp                # servidor MCP (stdio) con las lecturas como tools tipa
   llamás `fb_search`, `ig_profile`, `doctor`, `quota`, etc. como herramientas tipadas.
 - Contrato estable: `--json` va a stdout, el progreso a stderr, exit codes 0–5.
 
+## Lugares sin costo (OpenStreetMap / Google Maps)
+
+```bash
+argos places search "cafeterías" --cerca "Puebla, MX" --radio 3 --limite 20
+argos places search "restaurantes" --cerca "CDMX" --proveedor gmaps --limite 10
+argos places search "farmacias" --cerca "Puebla, MX" --out ./lugares   # + reporte md/CSV/SQLite
+```
+
+- **OpenStreetMap** (default, `--proveedor osm`): sin API key ni pagos. Nominatim
+  ubica la zona (eligiendo la ciudad, no el estado) y Overpass lista los POIs por
+  categoría dentro del radio — con **Photon como respaldo automático** si Overpass
+  está saturado. ~50 categorías en español/inglés (restaurantes, cafeterías,
+  farmacias, gimnasios, talleres…) o búsqueda por nombre.
+- **Google Maps** (`--proveedor gmaps`): scraping con Playwright (misma maquinaria
+  que FB/IG). Agrega rating de Google; puede fallar si Google cambia su DOM.
+- **En la UI**: pestaña **Lugares** — formulario, tabla con links/rating/distancia,
+  botón "ver en el mapa" y "Guardar como corrida".
+- **Como objetivo de investigación**: tipo `places_search` con `value` = búsqueda y
+  `kind` = zona; funciona con el planner del LLM, la cola de trabajos y los informes.
+
 ## Interfaz web (local)
 
 ```bash

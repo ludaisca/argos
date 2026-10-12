@@ -155,6 +155,12 @@ td.actions button { padding: 4px 8px; border: none; color: var(--danger); backgr
 .md pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow: auto; }
 .md a { color: var(--accent); }
 
+#p-results { overflow-x: auto; }
+#p-results table { min-width: 760px; }
+#p-results td { vertical-align: top; }
+#p-results a { color: var(--accent); text-decoration: none; }
+#p-results a:hover { text-decoration: underline; }
+
 .files { margin-top: 10px; }
 .files a {
   display: inline-block; margin: 3px 8px 3px 0; padding: 3px 9px; border-radius: 999px;

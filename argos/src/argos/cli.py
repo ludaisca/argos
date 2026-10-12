@@ -601,6 +601,89 @@ def ui(
     serve(host=host, port=port, open_browser=open_browser)
 
 
+# ── Lugares (OSM gratis / Google Maps scraping) ─────────────────────
+
+places_app = typer.Typer(
+    help="Lugares sin costo: OpenStreetMap (gratis) y Google Maps (scraping)."
+)
+
+
+@places_app.command("search")
+@_guard
+def places_search(
+    query: str = typer.Argument(
+        ..., help="Qué buscar: 'restaurantes', 'farmacias', o el nombre de un lugar."
+    ),
+    cerca: str = typer.Option(
+        None, "--cerca", help="Zona/ciudad (ej: 'Puebla, MX'). Vacío = búsqueda por nombre."
+    ),
+    radio: float = typer.Option(5.0, "--radio", help="Radio en km."),
+    limite: int = typer.Option(25, "--limite", help="Máximo de lugares."),
+    proveedor: str = typer.Option(
+        "osm", "--proveedor", help="osm (gratis, default) o gmaps (scraping)."
+    ),
+    out: str = typer.Option(
+        None, "--out", help="Carpeta donde guardar (places.jsonl + reporte + CSV)."
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Salida JSON."),
+) -> None:
+    """Busca lugares y, con --out, genera reporte (md + CSV + SQLite)."""
+    from argos import places as places_mod
+    from argos.report import build_report
+
+    config = ArgosConfig.load()
+    result = places_mod.search(
+        query,
+        location=cerca,
+        radius_km=radio,
+        limit=limite,
+        provider=proveedor,
+        config=config,
+        headless=True,
+    )
+
+    if out:
+        out_dir = Path(out)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        written, _skipped = append_unique_jsonl(
+            out_dir / "places.jsonl", result.places, ("source", "id")
+        )
+        report = build_report(out_dir, title=f"Lugares: {query}")
+        console.print(
+            f"[green]{written}[/green] lugares en {out_dir} · reporte: {report['markdown']}"
+        )
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                [place.model_dump(mode="json") for place in result.places],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("nombre")
+    table.add_column("categoría")
+    table.add_column("dirección", overflow="fold")
+    table.add_column("tel")
+    table.add_column("dist.")
+    for place in result.places:
+        table.add_row(
+            place.name,
+            place.category or "",
+            (place.address or "")[:60],
+            place.phone or "",
+            f"{place.distance_km} km" if place.distance_km is not None else "",
+        )
+    console.print(table)
+    console.print(f"[dim]{result.detail}[/dim]")
+
+
+app.add_typer(places_app, name="places")
+
+
 # ── Instagram (lectura, DOM-first, con límites) ─────────────────────
 
 ig_app = typer.Typer(

@@ -40,9 +40,11 @@ def test_index_and_meta(client: TestClient) -> None:
     assert "Argos" in home.text
 
     data = client.get("/api/meta").json()
-    assert data["platforms"] == ["facebook", "instagram"]
+    assert data["platforms"] == ["facebook", "instagram", "places"]
+    assert data["platform_labels"]["places"] == "Lugares (OSM/Google)"
     assert "ig_profile" in data["target_types"]["instagram"]
     assert "fb_page" in data["target_types"]["facebook"]
+    assert data["target_types"]["places"] == ["places_search"]
     assert data["kinds"]["ig_search"] == ["posts", "users"]
 
 
@@ -72,7 +74,7 @@ def test_brief_invalid_platform_falls_back_to_all(client: TestClient) -> None:
         json={"job": "x", "objective": "x", "platforms": ["tiktok"]},
     )
     assert r.status_code == 200
-    assert r.json()["platforms"] == ["facebook", "instagram"]
+    assert r.json()["platforms"] == ["facebook", "instagram", "places"]
 
 
 def test_brief_requires_objective(client: TestClient) -> None:
@@ -239,3 +241,49 @@ def test_runs_listing_detail_and_files(client: TestClient, isolated_home: Path) 
 def test_missing_run_returns_404(client: TestClient) -> None:
     assert client.get("/api/runs/no-existe").status_code == 404
     assert client.get("/api/runs/no%20existe").status_code in (400, 404)
+
+
+def test_places_search_and_save(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, isolated_home: Path
+) -> None:
+    from argos import places as places_mod
+    from argos.models import Place
+
+    def fake_search(query: str, **kwargs: Any) -> places_mod.PlacesResult:
+        return places_mod.PlacesResult(
+            places=[Place(source="osm", id="node/9", name="Café X", query=query)],
+            actions=1,
+            detail="1 lugar (test)",
+            center=places_mod.GeoPoint(label="Puebla", lat=19.0, lon=-98.2),
+        )
+
+    monkeypatch.setattr(places_mod, "search", fake_search)
+    r = client.post(
+        "/api/places/search", json={"query": "cafés", "location": "Puebla, MX"}
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["places"][0]["name"] == "Café X"
+    assert data["center"]["lat"] == 19.0
+
+    r = client.post(
+        "/api/places/save",
+        json={"query": "cafés", "location": "Puebla, MX", "places": data["places"]},
+    )
+    assert r.status_code == 200, r.text
+    run_name = r.json()["run_name"]
+    run_dir = isolated_home / "runs" / run_name
+    assert (run_dir / "places.jsonl").is_file()
+    assert (run_dir / "report.md").is_file()
+    listing = client.get("/api/runs").json()["runs"]
+    assert any(item["name"] == run_name for item in listing)
+
+
+def test_places_search_rejects_unknown_provider(client: TestClient) -> None:
+    r = client.post("/api/places/search", json={"query": "x", "provider": "bing"})
+    assert r.status_code == 422
+
+
+def test_places_save_requires_places(client: TestClient) -> None:
+    r = client.post("/api/places/save", json={"query": "x", "places": []})
+    assert r.status_code == 422

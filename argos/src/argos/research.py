@@ -38,6 +38,7 @@ TARGET_PLATFORM: dict[str, str] = {
     "fb_page": "facebook",
     "fb_search": "facebook",
     "fb_groups_feed": "facebook",
+    "places_search": "places",
 }
 
 EXAMPLE_PLAN = """\
@@ -54,6 +55,10 @@ targets:
   - type: fb_page
     value: NASA
     limit: 10
+  - type: places_search
+    value: cafeterías
+    kind: Puebla, MX
+    limit: 20
 """
 
 
@@ -222,6 +227,28 @@ def _execute(
     return {"posts": list(feed_result.posts)}, feed_result.actions, feed_result.daily_remaining
 
 
+def _execute_places(
+    target: Target, *, config: ArgosConfig
+) -> tuple[dict[str, list[Any]], int, int]:
+    """Búsqueda de lugares: OpenStreetMap por defecto; Google Maps si ``details: true``."""
+    from argos import places as places_mod
+
+    result = places_mod.search(
+        target.value or "",
+        location=target.kind,
+        limit=target.limit,
+        provider="gmaps" if target.details else "osm",
+        config=config,
+        headless=True,
+    )
+    limiter = RateLimiter(config, "places")
+    charged = 0
+    for _ in range(max(1, result.actions)):
+        limiter.before_action()
+        charged += 1
+    return {"places": list(result.places)}, charged, limiter.daily_remaining()
+
+
 def _slug(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")[:40] or "research"
 
@@ -247,7 +274,42 @@ def run_research(
         by_platform.setdefault(target.platform, []).append(target)
 
     results: list[dict[str, Any]] = []
+
+    def _record(
+        target: Target, records: dict[str, list[Any]], actions: int, remaining: int
+    ) -> None:
+        written: dict[str, int] = {}
+        for name, models in records.items():
+            if not models:
+                continue
+            filename, keys = DATASETS[name]
+            written[name], _skipped = append_unique_jsonl(
+                job_dir / filename, models, keys
+            )
+        results.append(
+            {"target": target.label(), "status": "ok", "written": written,
+             "actions": actions, "daily_remaining": remaining}
+        )
+
     for platform, platform_targets in by_platform.items():
+        if platform == "places":
+            for target in platform_targets:
+                _console.print(f"[dim]→ {target.label()}[/dim]")
+                try:
+                    records, actions, remaining = _execute_places(target, config=config)
+                except (NeedsHumanError, RateLimitedError) as exc:
+                    results.append(
+                        {"target": target.label(), "status": "stopped", "detail": str(exc)}
+                    )
+                    continue
+                except ArgosError as exc:
+                    results.append(
+                        {"target": target.label(), "status": "error", "detail": str(exc)}
+                    )
+                    continue
+                _record(target, records, actions, remaining)
+            continue
+
         limiter = RateLimiter(config, platform)
         pacer = Pacer()
         stopped = False
@@ -276,19 +338,7 @@ def run_research(
                             {"target": target.label(), "status": "error", "detail": str(exc)}
                         )
                         continue
-
-                    written: dict[str, int] = {}
-                    for name, models in records.items():
-                        if not models:
-                            continue
-                        filename, keys = DATASETS[name]
-                        written[name], _skipped = append_unique_jsonl(
-                            job_dir / filename, models, keys
-                        )
-                    results.append(
-                        {"target": target.label(), "status": "ok", "written": written,
-                         "actions": actions, "daily_remaining": remaining}
-                    )
+                    _record(target, records, actions, remaining)
         except PlaywrightError as exc:
             results.append(
                 {"target": f"platform:{platform}", "status": "error",

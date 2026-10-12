@@ -77,3 +77,27 @@ class Profile(BaseModel):
     profile_pic_url: str | None = None
     external_url: str | None = None
     fetched_at: datetime = Field(default_factory=_now)
+
+
+class Place(BaseModel):
+    """Un lugar (OpenStreetMap o Google Maps). La fuente va en ``source``."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: Literal["osm", "gmaps"] = "osm"
+    id: str
+    name: str
+    category: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    website: str | None = None
+    opening_hours: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    rating: float | None = None
+    reviews: int | None = None
+    distance_km: float | None = None
+    query: str | None = None
+    location: str | None = None
+    url: str | None = None
+    fetched_at: datetime = Field(default_factory=_now)

@@ -61,8 +61,18 @@ argos report <dir> [--json]                       # (re)genera report.md / CSV /
 ```
 
 El plan lista objetivos (`ig_profile`, `ig_posts`, `ig_hashtag`, `ig_reels`, `ig_search`,
-`ig_comments`, `fb_page`, `fb_search`, `fb_groups_feed`). La corrida genera `report.md`,
-CSVs, `argos.db` (SQLite consultable) y `run.json` en la carpeta del job.
+`ig_comments`, `fb_page`, `fb_search`, `fb_groups_feed`, `places_search`). La corrida
+genera `report.md`, CSVs, `argos.db` (SQLite consultable) y `run.json` en la carpeta del job.
+
+## Lugares (sin costo)
+
+```bash
+argos places search "cafeterías" --cerca "Puebla, MX" --radio 3 --limite 20 [--json] [--out DIR]
+argos places search "restaurantes" --cerca "CDMX" --proveedor gmaps   # scraping (rating Google)
+```
+
+OSM: sin API key (Overpass con respaldo Photon automático). En planes de investigación,
+`places_search` usa `value` = búsqueda y `kind` = zona.
 
 ## Agente autónomo
 
