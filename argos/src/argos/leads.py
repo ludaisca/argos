@@ -19,6 +19,7 @@ import datetime as dt
 import io
 import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -243,13 +244,20 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
     hits: list[searxng.SearxResult] = []
     texts: list[str] = []
 
-    def run_query(query: str, limit: int = 6) -> None:
+    def run_query(query: str, limit: int = 6, *, retry_empty: bool = True) -> None:
         result.queries.append(query)
-        try:
-            found = sources.searx_fn(query, base=sources.searx_base, limit=limit)
-        except ArgosError as exc:
-            _console.print(f"[yellow]  searx: {exc}[/yellow]")
-            return
+        found: list[searxng.SearxResult] = []
+        attempts = 2 if retry_empty else 1
+        for attempt in range(attempts):
+            try:
+                found = sources.searx_fn(query, base=sources.searx_base, limit=limit)
+            except ArgosError as exc:
+                _console.print(f"[yellow]  searx: {exc}[/yellow]")
+                return
+            if found or attempt == attempts - 1:
+                break
+            time.sleep(3.0)
+        _console.print(f"[dim]  searx: {len(found)} resultados · {query[:70]}[/dim]")
         hits.extend(found)
         for hit in found:
             texts.append(hit.title)
@@ -266,17 +274,37 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
         if not empresa:
             run_query(f'site:facebook.com "{nombre}"')
     if lead.telefono:
-        run_query(f'"{lead.telefono}"', limit=4)
+        run_query(f'"{lead.telefono}"', limit=4, retry_empty=False)
     if lead.correo:
-        run_query(f'"{lead.correo}"', limit=4)
+        run_query(f'"{lead.correo}"', limit=4, retry_empty=False)
 
     result.facebook = _facebook_from_hits(hits)
     result.telefono = _phone_from_texts(texts) or (lead.telefono or None)
 
-    # Google Maps: ficha del lugar (categoría, dirección, teléfono, link)
+    # Textos "relacionados": solo los hits donde aparece el nombre/empresa (o el
+    # correo/teléfono). Evita que listados de terceros (directorios, PDFs) aporten
+    # tipo/especialidad que no son del lead.
+    name_tokens = [t for t in medico.normalize(f"{empresa} {nombre}").split() if len(t) >= 4]
+    contact_tokens = [t for t in (lead.correo.lower(), lead.telefono.strip()) if t]
+    related_texts: list[str] = []
+    person_lead = not empresa and not _COMPANY_HINT.search(nombre)
+    for hit in hits:
+        title_norm = medico.normalize(hit.title)
+        haystack = f"{hit.title} {hit.snippet}".lower()
+        hits_name = sum(1 for token in name_tokens if token in title_norm)
+        hits_contact = any(token in haystack for token in contact_tokens)
+        needed = 1 if len(name_tokens) <= 1 else 2
+        if hits_contact or (name_tokens and hits_name >= needed):
+            related_texts.append(hit.title)
+            if not person_lead:
+                related_texts.append(hit.snippet)
+
+    # Google Maps: ficha del lugar (solo con empresa o nombre de institución; para
+    # personas sueltas no aplica y ahorramos el intento).
     place: Place | None = None
     query_place = empresa or nombre
-    if sources.use_gmaps and query_place:
+    looks_institution = bool(_COMPANY_HINT.search(query_place))
+    if sources.use_gmaps and query_place and (empresa or looks_institution):
         try:
             gm = sources.places_fn(
                 query_place,
@@ -290,6 +318,7 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
             _console.print(f"[yellow]  gmaps: {exc}[/yellow]")
     if place is not None:
         texts.extend([place.name or "", place.category or "", place.address or ""])
+        related_texts.extend([place.name or "", place.category or "", place.address or ""])
         result.google_maps = place.url
         result.categoria = place.category
         result.telefono = result.telefono or place.phone
@@ -307,11 +336,27 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
                 result.ciudad = parts[-2]
                 result.entidad = parts[-1]
 
+    _, apellido = _split_name(nombre)
+    result.apellido = (
+        apellido if (nombre and " " in nombre) else _apellido_from_hits(nombre, hits)
+    )
+
+    # Si la fuente no devolvió NADA (SearxNG saturado), no afirmamos "no es del
+    # ramo": queda dudoso con nota para reintentar.
+    if not hits and place is None:
+        result.sector = "dudoso"
+        result.sector_confidence = 0.1
+        result.observaciones = (
+            "Sin resultados de búsqueda (SearxNG devolvió vacío; reintentar más tarde)"
+        )
+        return result
+
     verdict = medico.classify(
         name=(place.name if place else empresa) or nombre or None,
         category=place.category if place else None,
         email=lead.correo or None,
         texts=texts,
+        related_texts=related_texts,
     )
     result.sector = verdict.sector
     result.sector_confidence = verdict.confidence
@@ -320,11 +365,6 @@ def enrich_lead(lead: Lead, sources: Sources) -> EnrichedLead:
         result.tipo_cliente = verdict.tipo_cliente
     elif verdict.sector == "no":
         result.tipo_cliente = medico.NO_RAMO
-
-    _, apellido = _split_name(nombre)
-    result.apellido = (
-        apellido if (nombre and " " in nombre) else _apellido_from_hits(nombre, hits)
-    )
 
     summary: list[str] = []
     if place is not None:
@@ -460,6 +500,7 @@ def enrich_batch(
     sources = sources or Sources(
         config=config,
         searx_base=searxng.resolve_base(config),
+        use_gmaps=use_gmaps,
         searx_fn=lambda *args, **kwargs: searxng.search(*args, **kwargs),
         places_fn=lambda *args, **kwargs: places_mod.search(*args, **kwargs),
         reverse_fn=lambda *args, **kwargs: places_mod.reverse_geocode(*args, **kwargs),

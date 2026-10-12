@@ -225,3 +225,133 @@ def test_enrich_batch_rejects_unknown_sector(tmp_path: Path) -> None:
             config=ArgosConfig.load(),
             sector="inmobiliario",
         )
+
+
+def test_enrich_batch_respects_no_gmaps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"places": 0}
+
+    def fake_places(*args: Any, **kwargs: Any) -> Any:
+        calls["places"] += 1
+        raise AssertionError("gmaps no debería llamarse con use_gmaps=False")
+
+    monkeypatch.setattr(leads_mod.searxng, "search", lambda *a, **k: list(SEARX_HITS))
+    monkeypatch.setattr(leads_mod.places_mod, "search", fake_places)
+    monkeypatch.setattr(leads_mod.time, "sleep", lambda _s: None)
+    summary = enrich_batch(
+        [Lead(nombre="Char Gipt", empresa="Clínica Dental Sonrisa")],
+        out_dir=tmp_path / "o",
+        config=ArgosConfig.load(),
+        use_gmaps=False,
+    )
+    assert summary["rows"] == 1
+    assert calls["places"] == 0
+
+
+def test_searx_retry_recovers_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = {"n": 0}
+
+    def flaky(query: str, **kwargs: Any) -> list[searxng.SearxResult]:
+        attempts["n"] += 1
+        return [] if attempts["n"] == 1 else list(SEARX_HITS)
+
+    monkeypatch.setattr(leads_mod.time, "sleep", lambda _s: None)
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=flaky,
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(empresa="Clínica Dental Sonrisa"), sources)
+    assert enriched.evidencia
+    assert attempts["n"] >= 2
+
+
+def test_email_signal_no_false_positive() -> None:
+    verdict = medico.classify(email="rodriguezpatriciobernal@gmail.com")
+    assert "correo médico" not in verdict.signals
+    positive = medico.classify(email="contacto@clinica-sonrisa.mx")
+    assert "correo médico" in positive.signals
+
+
+def test_third_party_listings_not_used_for_specialty_or_type() -> None:
+    verdict = medico.classify(
+        name="Patricio Bernal",
+        texts=[
+            "Neurólogos recomendados - Doctoralia",
+            "Listado de laboratorios de Chile (PDF)",
+            "Gaceta de Madrid 1908 - Patricio Bernal Rssi",
+        ],
+        related_texts=["Patricio Bernal - Facebook"],
+    )
+    assert verdict.especialidades == []
+    assert verdict.tipo_cliente is None
+
+
+def test_related_texts_enable_type_and_specialty() -> None:
+    verdict = medico.classify(
+        name="Clínica Dental Sonrisa",
+        texts=["Directorio genérico"],
+        related_texts=["Clínica Dental Sonrisa | Puebla", "Odontología y ortodoncia"],
+    )
+    assert verdict.tipo_cliente == "Dental"
+    assert "Odontología" in verdict.especialidades
+
+
+def test_empty_sources_mark_dudoso_not_no(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sin resultados de búsqueda no se afirma "no es del ramo": queda dudoso."""
+    monkeypatch.setattr(leads_mod.time, "sleep", lambda _s: None)
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: [],
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Patricio Bernal", telefono="9541235609"), sources)
+    assert enriched.sector == "dudoso"
+    assert "Sin resultados" in enriched.observaciones
+    assert enriched.tipo_cliente is None
+
+
+def test_snippet_only_mentions_do_not_enrich(monkeypatch: pytest.MonkeyPatch) -> None:
+    hits = [
+        searxng.SearxResult(
+            title="Neurólogos recomendados - Directorio médico",
+            url="https://directorio.example/neurologos",
+            snippet="Manuel Patricio Bernal Berk, Neurólogo. Laboratorio clínico asociado.",
+        )
+    ]
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: list(hits),
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Patricio Bernal"), sources)
+    assert enriched.tipo_cliente is None
+    assert enriched.especialidad is None
+
+
+def test_person_lead_skips_gmaps(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"places": 0}
+
+    def fake_places(*args: Any, **kwargs: Any) -> Any:
+        calls["places"] += 1
+        raise AssertionError("gmaps no aplica para una persona sin empresa")
+
+    monkeypatch.setattr(leads_mod.searxng, "search", lambda *a, **k: list(SEARX_HITS))
+    monkeypatch.setattr(leads_mod.places_mod, "search", fake_places)
+    monkeypatch.setattr(leads_mod.time, "sleep", lambda _s: None)
+    summary = enrich_batch(
+        [Lead(nombre="Patricio Bernal")],
+        out_dir=tmp_path / "o2",
+        config=ArgosConfig.load(),
+        use_gmaps=True,
+    )
+    assert summary["rows"] == 1
+    assert calls["places"] == 0

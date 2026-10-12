@@ -229,9 +229,19 @@ def classify(
     category: str | None = None,
     email: str | None = None,
     texts: list[str] | None = None,
+    related_texts: list[str] | None = None,
 ) -> MedicalVerdict:
-    """Decide si el lead es del ramo médico, con confianza y señales."""
+    """Decide si el lead es del ramo médico, con confianza y señales.
+
+    ``related_texts`` (si se provee) es el subconjunto donde aparece el lead:
+    se usa para derivar tipo/especialidad, evitando listados de terceros.
+    """
     blob = normalize(" ".join(filter(None, [name, category, email, *(texts or [])])))
+    derivation_blob = (
+        normalize(" ".join(filter(None, [name, category, *(related_texts or [])])))
+        if related_texts is not None
+        else normalize(" ".join(filter(None, [name, category, *(texts or [])])))
+    )
     score = 0.0
     signals: list[str] = []
     for needle in _STRONG_SIGNALS:
@@ -242,15 +252,28 @@ def classify(
         if needle in blob and needle not in signals:
             score += 0.5
             signals.append(needle)
-    specialties = detect_specialties(blob)
+    specialties = detect_specialties(derivation_blob)
     if specialties:
         score += 1.0 * len(specialties)
         signals.extend(specialties)
-    if email and re.search(r"(clinica|hospital|salud|medic|dental|dr|dra)\.?", normalize(email)):
-        score += 1.0
-        signals.append("dominio de correo médico")
+    if email:
+        local, _, domain = normalize(email).partition("@")
+        local_medical = re.search(
+            r"(^|[-._])(dr|dra|doctor|doctora|medic|medico|medical)([-._]|$)", local
+        )
+        domain_medical = re.search(
+            r"(^|[-.])(clinica|hospital|salud|medic|dental|farmacia|laboratorio)([-.]|$)",
+            domain,
+        )
+        if local_medical or domain_medical:
+            score += 1.0
+            signals.append("correo médico")
 
-    tipo = suggest_tipo(name=name, category=category, texts=texts)
+    tipo = suggest_tipo(
+        name=name,
+        category=category,
+        texts=related_texts if related_texts is not None else texts,
+    )
     if tipo is not None and tipo in MEDICAL_TIPOS:
         score += 2.0
         signals.append(f"tipo sugerido: {tipo}")

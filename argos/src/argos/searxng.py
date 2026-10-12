@@ -18,7 +18,7 @@ from argos.errors import ArgosError
 
 DEFAULT_BASE = "https://searxng.waone.cloud"
 USER_AGENT = "Argos/0.1 (herramienta personal de investigacion; uso de bajo volumen)"
-_MIN_INTERVAL = 0.7
+_MIN_INTERVAL = 1.1
 _last_request = 0.0
 
 
