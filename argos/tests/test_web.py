@@ -318,7 +318,7 @@ def test_leads_sources_toggle_roundtrip(
 
     data = client.get("/api/leads/sources").json()
     by_id = {item["id"]: item for item in data["sources"]}
-    assert set(by_id) == {"searxng", "facebook", "nominatim", "gmaps"}
+    assert set(by_id) == {"searxng", "bing", "facebook", "nominatim", "gmaps"}
     assert all(item["enabled"] for item in data["sources"])
     assert by_id["searxng"]["status"] == "ok"
     assert by_id["gmaps"]["status"] == "on-demand"
@@ -336,7 +336,13 @@ def test_leads_sources_toggle_roundtrip(
 
     service = client.app.state.service  # type: ignore[attr-defined]
     persisted = service.config.get("leads_sources")
-    assert persisted == {"searxng": True, "facebook": False, "gmaps": False, "nominatim": True}
+    assert persisted == {
+        "searxng": True,
+        "bing": True,
+        "facebook": False,
+        "gmaps": False,
+        "nominatim": True,
+    }
 
     assert (
         client.put("/api/leads/sources", json={"enabled": {"nope": True}}).status_code == 422

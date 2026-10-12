@@ -56,23 +56,31 @@ def search(
     limit: int = 8,
     language: str = "es",
     categories: str = "general",
+    engines: str | None = None,
     timeout: int = 25,
 ) -> list[SearxResult]:
-    """Busca en la instancia de SearxNG y devuelve resultados normalizados."""
+    """Busca en la instancia de SearxNG y devuelve resultados normalizados.
+
+    ``engines``: restringe a motores concretos (p. ej. ``bing`` cuando el pool
+    general viene saturado).
+    """
     query = (query or "").strip()
     if not query:
         return []
     endpoint = (base or DEFAULT_BASE).rstrip("/")
     _throttle()
+    params = {
+        "q": query,
+        "format": "json",
+        "language": language,
+        "categories": categories,
+    }
+    if engines:
+        params["engines"] = engines
     try:
         response = requests.get(
             f"{endpoint}/search",
-            params={
-                "q": query,
-                "format": "json",
-                "language": language,
-                "categories": categories,
-            },
+            params=params,
             headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
             timeout=timeout,
         )

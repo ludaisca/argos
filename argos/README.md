@@ -45,12 +45,21 @@ argos leads template --out leads.csv
 argos leads enrich leads.csv --sector medico --out ./leads-out
 ```
 
-Entra tu lista del CRM (**Nombre, Correo, Teléfono, Empresa/clínica/hospital** — cualquiera
-de los cuatro, en CSV/TSV o pegado) y sale una fila por lead con las columnas del CRM y la
+Entra tu lista del CRM (**Nombre, Correo, Teléfono, Empresa/clínica/hospital** — CSV/TSV,
+export **JSON** del CRM o pegado) y sale una fila por lead con las columnas del CRM y la
 validación de **ramo médico**:
 
-- **Fuentes sin login**: SearxNG propio (web, teléfonos, Facebook), Google Maps (ficha,
-  categoría, dirección, teléfono) y Nominatim reverse (Entidad/Ciudad). LinkedIn, después.
+- **Solo México**: nada de otro país entra al lead. Se descartan resultados por dominio
+  (`.cl`, `.co`, `.es`, ccTLD extranjeros), por texto (ciudades/países inequívocos) y por
+  coordenadas + `country_code` de Nominatim; la ficha de Google Maps se pide sesgada a
+  México. Si todo lo encontrado era de fuera —o no hay coincidencias verificables del
+  lead (ruido, marcas homónimas)— el lead queda **Dudoso** con la nota de descartes:
+  nunca se auto-llena con datos extranjeros ni se marca "No es del ramo" por ruido.
+
+- **Fuentes sin login**: SearxNG propio (web, teléfonos, Facebook) con **respaldo de Bing
+  directo** (es-MX) cuando SearxNG devuelve vacío — su motor de Google se satura por
+  ráfagas; Google Maps (ficha, categoría, dirección, teléfono) y Nominatim reverse
+  (Entidad/Ciudad). LinkedIn, después.
 - **Fuentes activables**: en la UI cada una tiene su switch (se guarda en
   `leads_sources` de `config.yaml`); el pipeline respeta lo activo. Overrides por corrida:
   `--no-searxng --no-facebook --no-gmaps --no-nominatim`.

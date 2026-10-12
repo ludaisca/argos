@@ -295,6 +295,8 @@ def reverse_geocode(lat: float, lon: float, *, timeout: int = 30) -> dict[str, s
     return {
         "state": str(state),
         "city": str(city),
+        "country": str(address.get("country") or ""),
+        "country_code": str(address.get("country_code") or "").lower(),
         "display": str(data.get("display_name") or ""),
     }
 

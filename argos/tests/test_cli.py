@@ -613,6 +613,7 @@ def test_leads_enrich_cli_passes_batch_flags(
             "--pause-seconds",
             "5",
             "--no-searxng",
+            "--no-bing",
             "--no-facebook",
             "--no-nominatim",
         ],
@@ -621,6 +622,7 @@ def test_leads_enrich_cli_passes_batch_flags(
     assert captured["batch_size"] == 2
     assert captured["pause_seconds"] == 5.0
     assert captured["use_searxng"] is False
+    assert captured["use_bing"] is False
     assert captured["use_facebook"] is False
     assert captured["use_gmaps"] is None  # sin flag: se respeta la config
     assert captured["use_nominatim"] is False

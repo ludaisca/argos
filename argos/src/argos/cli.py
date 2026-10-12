@@ -786,6 +786,9 @@ def leads_enrich(
     no_searxng: bool = typer.Option(
         False, "--no-searxng", help="Sin búsquedas web (SearxNG) en esta corrida."
     ),
+    no_bing: bool = typer.Option(
+        False, "--no-bing", help="Sin el respaldo de Bing directo cuando SearxNG viene vacío."
+    ),
     no_facebook: bool = typer.Option(
         False, "--no-facebook", help="Sin la búsqueda dedicada site:facebook.com."
     ),
@@ -826,6 +829,7 @@ def leads_enrich(
         config=config,
         sector=sector,
         use_searxng=False if no_searxng else None,
+        use_bing=False if no_bing else None,
         use_facebook=False if no_facebook else None,
         use_gmaps=False if no_gmaps else None,
         use_nominatim=False if no_nominatim else None,

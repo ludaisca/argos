@@ -114,6 +114,7 @@ class LeadsEnrichPayload(BaseModel):
     text: str = ""
     sector: Literal["medico"] = "medico"
     use_searxng: bool | None = None
+    use_bing: bool | None = None
     use_facebook: bool | None = None
     use_gmaps: bool | None = None
     use_nominatim: bool | None = None
@@ -903,6 +904,8 @@ def create_app(home: Path | None = None) -> FastAPI:
         ]
         if payload.use_searxng is False:
             args.append("--no-searxng")
+        if payload.use_bing is False:
+            args.append("--no-bing")
         if payload.use_facebook is False:
             args.append("--no-facebook")
         if payload.use_gmaps is False:
@@ -1047,6 +1050,20 @@ def create_app(home: Path | None = None) -> FastAPI:
             }
         )
 
+        sources.append(
+            {
+                "id": "bing",
+                "name": "Bing directo — respaldo",
+                "enabled": flags["bing"],
+                "status": "on-demand" if flags["bing"] else "off",
+                "detail": (
+                    "búsqueda directa a bing.com (es-MX): se usa cuando SearxNG devuelve vacío"
+                    if flags["bing"]
+                    else "Desactivada: sin respaldo cuando SearxNG viene vacío."
+                ),
+                "url": "https://www.bing.com",
+            }
+        )
         geo_status = "off"
         geo_detail = "Desactivada: Entidad/Ciudad quedan vacías (salvo la dirección de Maps)."
         if flags["nominatim"]:

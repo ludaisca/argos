@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -182,7 +183,7 @@ def test_enrich_lead_non_medical() -> None:
         searx_fn=lambda *args, **kwargs: [
             searxng.SearxResult(
                 title="Constructora del Bajío",
-                url="https://construcciones.example",
+                url="https://construccionesdelbajio.com.mx/obras",
                 snippet="Obra pública y privada.",
             )
         ],
@@ -255,25 +256,32 @@ def test_enrich_batch_respects_no_gmaps(tmp_path: Path, monkeypatch: pytest.Monk
     assert calls["places"] == 0
 
 
-def test_searx_retry_recovers_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    attempts = {"n": 0}
+def test_empty_searx_falls_back_to_bing(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"searx": 0, "bing": 0}
 
-    def flaky(query: str, **kwargs: Any) -> list[searxng.SearxResult]:
-        attempts["n"] += 1
-        return [] if attempts["n"] == 1 else list(SEARX_HITS)
+    def empty_searx(query: str, **kwargs: Any) -> list[searxng.SearxResult]:
+        calls["searx"] += 1
+        return []
+
+    def fake_bing(query: str, **kwargs: Any) -> list[searxng.SearxResult]:
+        calls["bing"] += 1
+        return list(SEARX_HITS)
 
     monkeypatch.setattr(leads_mod.time, "sleep", lambda _s: None)
     sources = Sources(
         config=ArgosConfig.load(),
         searx_base="https://searx.test",
         use_gmaps=False,
-        searx_fn=flaky,
+        searx_fn=empty_searx,
+        bing_fn=fake_bing,
         places_fn=_fake_places,
         reverse_fn=_fake_reverse,
     )
     enriched = enrich_lead(Lead(empresa="Clínica Dental Sonrisa"), sources)
     assert enriched.evidencia
-    assert attempts["n"] >= 2
+    # 3 consultas de empresa: cada una vacía en SearxNG y recuperada por Bing
+    assert calls["searx"] == 3
+    assert calls["bing"] == 3
 
 
 def test_email_signal_no_false_positive() -> None:
@@ -297,6 +305,207 @@ def test_third_party_listings_not_used_for_specialty_or_type() -> None:
     assert verdict.tipo_cliente is None
 
 
+def test_parse_leads_json_export_crm() -> None:
+    text = json.dumps(
+        {
+            "SELECT x": [
+                {
+                    "id": "1",
+                    "fullname": "Daniel",
+                    "email": "drh1000.dr@gmail.com",
+                    "phone": "9652141776",
+                    "name": "No contactado",
+                },
+                {
+                    "id": "2",
+                    "fullname": "Marian Sobrino",
+                    "email": "marian@clinicasonrisa.mx",
+                    "phone": "9933439991",
+                    "name": "No contactado",
+                },
+            ]
+        }
+    )
+    leads = parse_leads(text)
+    assert len(leads) == 2
+    assert leads[0].nombre == "Daniel"
+    assert leads[0].correo == "drh1000.dr@gmail.com"
+    assert leads[0].telefono == "9652141776"
+    assert leads[0].empresa == ""  # “No contactado” es la fase, no empresa/nombre
+
+
+def test_parse_leads_json_simple_list() -> None:
+    text = json.dumps([{"Nombre": "Ana", "Correo": "a@clinicasonrisa.mx", "Empresa": "Clínica X"}])
+    leads = parse_leads(text)
+    assert len(leads) == 1
+    assert leads[0].nombre == "Ana"
+    assert leads[0].empresa == "Clínica X"
+
+
+def test_foreign_hits_dropped_from_lead() -> None:
+    foreign = [
+        searxng.SearxResult(
+            title="Dr. Juan Pérez Neurólogo",
+            url="https://www.doctoralia.cl/perfil/juan-perez",
+            snippet="Neurólogo en Santiago de Chile",
+        ),
+        searxng.SearxResult(
+            title="Clínica del Valle",
+            url="https://www.clinicadelvalle.com.co/servicios",
+            snippet="Bogotá, Colombia",
+        ),
+    ]
+    mexican = searxng.SearxResult(
+        title="Dr. Juan Pérez — Hospital Angeles",
+        url="https://hospitalangeles.com.mx/juan-perez",
+        snippet="Médico en Puebla",
+    )
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: [*foreign, mexican],
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Juan Pérez"), sources)
+    assert enriched.evidencia == ["https://hospitalangeles.com.mx/juan-perez"]
+    assert "otros países" in enriched.observaciones
+
+
+def test_only_foreign_hits_marks_dudoso() -> None:
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: [
+            searxng.SearxResult(
+                title="Dr. Juan Pérez",
+                url="https://www.doctoralia.cl/perfil/juan-perez",
+                snippet="Santiago de Chile",
+            )
+        ],
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Juan Pérez"), sources)
+    assert enriched.sector == "dudoso"
+    assert "Sin resultados" in enriched.observaciones
+    assert "no ser de México" in enriched.observaciones
+
+
+def _fake_places_bogota(*args: Any, **kwargs: Any) -> places_mod.PlacesResult:
+    return places_mod.PlacesResult(
+        places=[
+            places_mod.Place(
+                source="gmaps",
+                id="gmaps/bog",
+                name="Clínica del Valle",
+                category="Hospital",
+                address="Cra 7 # 40-50, Bogotá",
+                phone="5711234567",
+                lat=4.711,
+                lon=-74.072,
+                url="https://www.google.com/maps/place/clinica-valle",
+            )
+        ],
+        actions=1,
+        detail="1 lugar",
+    )
+
+
+def test_gmaps_place_outside_mexico_dropped() -> None:
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        searx_fn=lambda *args, **kwargs: list(SEARX_HITS),
+        places_fn=_fake_places_bogota,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(empresa="Clínica del Valle"), sources)
+    assert enriched.google_maps is None
+    assert enriched.categoria is None
+    assert "otros países" in enriched.observaciones
+
+
+def test_nominatim_country_code_discards_place() -> None:
+    def fake_reverse_colombia(*args: Any, **kwargs: Any) -> dict[str, str]:
+        return {
+            "state": "Cundinamarca",
+            "city": "Bogotá",
+            "country": "Colombia",
+            "country_code": "co",
+            "display": "…",
+        }
+
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        searx_fn=lambda *args, **kwargs: list(SEARX_HITS),
+        places_fn=_fake_places,
+        reverse_fn=fake_reverse_colombia,
+    )
+    enriched = enrich_lead(Lead(empresa="Clínica Dental Sonrisa"), sources)
+    assert enriched.google_maps is None  # coordenadas MX pero el país real es Colombia
+    assert enriched.entidad is None and enriched.ciudad is None
+
+
+def test_facebook_post_and_generic_name_rejected() -> None:
+    hits = [
+        searxng.SearxResult(
+            title="¡Feliz cumpleaños Daniel!",
+            url="https://www.facebook.com/guiainfantilcom/posts/12345",
+            snippet="El nombre Daniel celebra hoy…",
+        )
+    ]
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: list(hits),
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Daniel"), sources)
+    assert enriched.facebook is None
+    assert enriched.sector == "dudoso"
+    assert enriched.evidencia == []
+
+
+def test_facebook_page_slug_must_match_name() -> None:
+    good = searxng.SearxResult(
+        title="Patricio Bernal Asesor",
+        url="https://www.facebook.com/PatricioBernalAsesor/",
+        snippet="Asesoría y consulta médica en Puebla",
+    )
+    sources = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: [good],
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched = enrich_lead(Lead(nombre="Patricio Bernal"), sources)
+    assert enriched.facebook == "https://www.facebook.com/PatricioBernalAsesor/"
+
+    unrelated = searxng.SearxResult(
+        title="Cocina de Ana",
+        url="https://www.facebook.com/cocinadeana/",
+        snippet="Recetas",
+    )
+    sources_unrelated = Sources(
+        config=ArgosConfig.load(),
+        searx_base="https://searx.test",
+        use_gmaps=False,
+        searx_fn=lambda *args, **kwargs: [unrelated],
+        places_fn=_fake_places,
+        reverse_fn=_fake_reverse,
+    )
+    enriched_unrelated = enrich_lead(Lead(nombre="Patricio Bernal"), sources_unrelated)
+    assert enriched_unrelated.facebook is None
+
+
 def test_related_texts_enable_type_and_specialty() -> None:
     verdict = medico.classify(
         name="Clínica Dental Sonrisa",
@@ -311,6 +520,7 @@ def test_load_lead_sources_defaults_and_config(tmp_path: Path) -> None:
     config = ArgosConfig.load(tmp_path)
     assert load_lead_sources(config) == {
         "searxng": True,
+        "bing": True,
         "facebook": True,
         "gmaps": True,
         "nominatim": True,
@@ -415,6 +625,7 @@ def test_empty_sources_mark_dudoso_not_no(monkeypatch: pytest.MonkeyPatch) -> No
         searx_base="https://searx.test",
         use_gmaps=False,
         searx_fn=lambda *args, **kwargs: [],
+        bing_fn=lambda *args, **kwargs: [],
         places_fn=_fake_places,
         reverse_fn=_fake_reverse,
     )
@@ -428,7 +639,7 @@ def test_snippet_only_mentions_do_not_enrich(monkeypatch: pytest.MonkeyPatch) ->
     hits = [
         searxng.SearxResult(
             title="Neurólogos recomendados - Directorio médico",
-            url="https://directorio.example/neurologos",
+            url="https://directorio-medico.mx/neurologos",
             snippet="Manuel Patricio Bernal Berk, Neurólogo. Laboratorio clínico asociado.",
         )
     ]
